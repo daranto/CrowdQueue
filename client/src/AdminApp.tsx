@@ -75,9 +75,19 @@ export function AdminApp() {
     setName("");
   }
 
-  function login() {
-    const setup = state?.setupRequired ? `?setup_token=${encodeURIComponent(setupToken)}` : "";
-    window.location.href = `/api/admin/spotify/login${setup}`;
+  async function login() {
+    setBusy("login");
+    setError(null);
+    try {
+      const result = await api<{ url: string }>("/api/admin/spotify/login", {
+        method: "POST",
+        body: JSON.stringify({ setupToken: state?.setupRequired ? setupToken : undefined }),
+      });
+      window.location.assign(result.url);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Spotify-Anmeldung konnte nicht gestartet werden.");
+      setBusy(null);
+    }
   }
 
   async function playNow(track: Track) {
@@ -101,7 +111,7 @@ export function AdminApp() {
           {!state?.configured && <Notice tone="error">In der Serverkonfiguration fehlen Spotify Client ID oder Client Secret.</Notice>}
           {(error || oauthErrorMessage) && <Notice tone="error">{error ?? oauthErrorMessage}</Notice>}
           {setupRequired && <label><span>Einmaliges Setup-Token</span><input type="password" value={setupToken} onChange={(event) => setSetupToken(event.target.value)} autoComplete="one-time-code" /></label>}
-          <button className="primary-button" type="button" onClick={login} disabled={!state?.configured || Boolean(setupRequired && !setupToken)}>{setupRequired ? "Mit Spotify verbinden" : "Mit Spotify anmelden"}</button>
+          <button className="primary-button" type="button" onClick={() => void login()} disabled={!state?.configured || busy === "login" || Boolean(setupRequired && !setupToken)}>{busy === "login" ? "Anmeldung wird gestartet …" : setupRequired ? "Mit Spotify verbinden" : "Mit Spotify anmelden"}</button>
           <p className="fine-print">{setupRequired
             ? "Das Setup-Token wird nur beim allerersten Verbinden benötigt. Danach bleibt ausschließlich dieses Spotify-Konto als Besitzer hinterlegt."
             : "Nur das ursprünglich eingerichtete Spotify-Konto erhält Zugriff auf die Admin-Konsole."}</p>

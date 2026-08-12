@@ -187,6 +187,12 @@ export class SpotifyClient {
     const payload = await response.json() as any;
     const items = (payload.tracks?.items ?? []).filter((item: any) => item?.is_playable !== false && !item?.is_local).map(mapTrack);
     const result = { items, total: payload.tracks?.total ?? items.length, nextOffset: payload.tracks?.next ? offset + 10 : null };
+    if (this.searchCache.size >= 500) {
+      for (const [cacheKey, entry] of this.searchCache) {
+        if (entry.expires <= Date.now() || this.searchCache.size >= 500) this.searchCache.delete(cacheKey);
+        if (this.searchCache.size < 400) break;
+      }
+    }
     this.searchCache.set(key, { expires: Date.now() + 30000, result });
     return result;
   }

@@ -1,16 +1,27 @@
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import type { FastifyServerOptions } from "fastify";
 
 function env(name: string, fallback = ""): string {
   return process.env[name]?.trim() || fallback;
 }
 
-function secret(name: string, fallback: string): string {
+function secret(name: string, fallback: string, minimumLength = 32): string {
   const value = env(name, fallback);
-  if (process.env.NODE_ENV === "production" && value === fallback) {
-    throw new Error(`${name} muss in Produktion gesetzt sein.`);
+  if (process.env.NODE_ENV === "production" && (value === fallback || value.length < minimumLength)) {
+    throw new Error(`${name} muss in Produktion gesetzt sein und mindestens ${minimumLength} Zeichen haben.`);
   }
   return value;
+}
+
+function proxyTrust(value: string): FastifyServerOptions["trustProxy"] {
+  const normalized = value.toLowerCase();
+  if (!value || normalized === "false") return false;
+  // Historische TRUST_PROXY=true-Installationen bleiben funktionsfähig, vertrauen
+  // aber nicht länger beliebigen öffentlichen Absendern.
+  if (normalized === "true") return ["loopback", "linklocal", "uniquelocal"];
+  if (/^\d+$/.test(value)) return Number(value);
+  return value.split(",").map((entry) => entry.trim()).filter(Boolean);
 }
 
 const databasePath = resolve(env("DATABASE_PATH", "./data/crowdqueue.sqlite"));
@@ -28,8 +39,8 @@ export const config = {
   spotifyRedirectUri: env("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8080/api/admin/spotify/callback"),
   sessionSecret: secret("SESSION_SECRET", "dev-session-secret-change-me-please-32"),
   encryptionKey: secret("ENCRYPTION_KEY", "dev-encryption-key-change-me-32bytes"),
-  adminSetupToken: secret("ADMIN_SETUP_TOKEN", "change-me"),
-  trustProxy: env("TRUST_PROXY", "false") === "true",
+  adminSetupToken: secret("ADMIN_SETUP_TOKEN", "change-me", 24),
+  trustProxy: proxyTrust(env("TRUST_PROXY", "false")),
   demoMode: env("DEMO_MODE", "false") === "true",
   controllerIntervalMs: Number(env("CONTROLLER_INTERVAL_MS", "5000")),
   lockBeforeEndMs: Number(env("LOCK_BEFORE_END_MS", "30000")),

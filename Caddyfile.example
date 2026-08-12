@@ -1,10 +1,15 @@
 party.example.com {
+  tls {
+    protocols tls1.2 tls1.3
+  }
   reverse_proxy crowdqueue:8080
 }
 
 # Für reinen WLAN-Betrieb: internen DNS-Eintrag party.home.arpa auf den
 # Caddy-Host zeigen lassen und dessen lokale CA auf den Geräten vertrauen.
 party.home.arpa {
-  tls internal
+  tls internal {
+    protocols tls1.2 tls1.3
+  }
   reverse_proxy crowdqueue:8080
 }

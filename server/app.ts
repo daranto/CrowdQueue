@@ -36,13 +36,38 @@ export interface AppOptions {
 }
 
 export async function buildApp(options: AppOptions = {}) {
-  const app = Fastify({ logger: options.logger ?? config.nodeEnv !== "test", trustProxy: config.trustProxy });
+  const app = Fastify({
+    logger: options.logger ?? config.nodeEnv !== "test",
+    trustProxy: config.trustProxy,
+    bodyLimit: 32 * 1024,
+    requestTimeout: 15_000,
+    connectionTimeout: 10_000,
+    keepAliveTimeout: 10_000,
+    maxRequestsPerSocket: 1_000,
+  });
   const db = new AppDatabase(options.databasePath);
   const spotify = new SpotifyClient(db);
   const events = new PartyEvents();
   const controller = new QueueController(db, spotify, events);
+  const configuredOrigins = [config.publicBaseUrl, config.lanBaseUrl].map((value) => new URL(value));
+  const sseConnectionsByIp = new Map<string, number>();
+  let openSseConnections = 0;
   await app.register(cookie);
-  await app.register(rateLimit, { global: false, keyGenerator: (request) => verify(request.cookies[GUEST_COOKIE], "guest") ?? ipDigest(request.ip) });
+  await app.register(rateLimit, {
+    global: true,
+    max: 600,
+    timeWindow: "1 minute",
+    keyGenerator: (request) => ipDigest(request.ip),
+  });
+
+  app.addHook("onRequest", async (request, reply) => {
+    if (config.nodeEnv !== "production" || request.protocol === "https") return;
+    const host = String(request.headers.host ?? "").toLowerCase();
+    const target = configuredOrigins.find((origin) => origin.protocol === "https:" && origin.host.toLowerCase() === host);
+    if (target) {
+      return reply.code(308).header("Location", `${target.origin}${request.url}`).send();
+    }
+  });
 
   app.decorateRequest("guestDeviceId", "");
   app.addHook("onRequest", async (request, reply) => {
@@ -59,16 +84,22 @@ export async function buildApp(options: AppOptions = {}) {
       });
     }
     request.guestDeviceId = deviceId;
-    db.touchDevice(deviceId, ipDigest(request.ip));
   });
 
-  app.addHook("onSend", async (_request, reply, payload) => {
+  app.addHook("onSend", async (request, reply, payload) => {
     reply
       .header("X-Content-Type-Options", "nosniff")
       .header("X-Frame-Options", "DENY")
+      .header("X-DNS-Prefetch-Control", "off")
       .header("Referrer-Policy", "strict-origin-when-cross-origin")
       .header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-      .header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://i.scdn.co https://mosaic.scdn.co; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'");
+      .header("Cross-Origin-Opener-Policy", "same-origin")
+      .header("Cross-Origin-Resource-Policy", "same-origin")
+      .header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://i.scdn.co https://mosaic.scdn.co; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'");
+    if (request.url.startsWith("/api/")) reply.header("Cache-Control", "no-store");
+    if (config.nodeEnv === "production" && request.protocol === "https") {
+      reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    }
     return payload;
   });
 
@@ -97,16 +128,21 @@ export async function buildApp(options: AppOptions = {}) {
     const token = randomToken(32);
     const csrf = randomToken(24);
     db.sqlite.prepare("INSERT INTO admin_sessions(token_hash, csrf_token, expires_at, created_at) VALUES (?, ?, ?, ?)").run(hash(token), csrf, nowPlus(12), new Date().toISOString());
-    reply.setCookie(ADMIN_COOKIE, sign(token, "admin"), { path: "/", httpOnly: true, secure: request.protocol === "https", sameSite: "lax", maxAge: 12 * 3600 });
+    reply.setCookie(ADMIN_COOKIE, sign(token, "admin"), { path: "/", httpOnly: true, secure: request.protocol === "https", sameSite: "strict", maxAge: 12 * 3600 });
     return csrf;
   }
 
-  function partyForCode(code: string, reply: FastifyReply) {
+  function partyForCode(code: string, request: FastifyRequest, reply: FastifyReply) {
+    if (!/^[A-Za-z0-9_-]{8,64}$/.test(code)) {
+      void reply.code(404).send({ error: "Diese Party wurde nicht gefunden." });
+      return null;
+    }
     const party = db.getPartyByCode(code);
     if (!party) {
       void reply.code(404).send({ error: "Diese Party wurde nicht gefunden." });
       return null;
     }
+    db.touchDevice(request.guestDeviceId, ipDigest(request.ip));
     return party;
   }
 
@@ -114,9 +150,34 @@ export async function buildApp(options: AppOptions = {}) {
     if (config.nodeEnv !== "production") return true;
     const requestOrigin = `${request.protocol}://${request.headers.host}`;
     const browserOrigin = request.headers.origin;
-    if (requestOrigin === guestOrigin && (!browserOrigin || browserOrigin === guestOrigin)) return true;
+    if (requestOrigin === guestOrigin && browserOrigin === guestOrigin) return true;
     void reply.code(403).send({ error: "Dieser Party-Link ist nur über seine ursprüngliche Adresse nutzbar." });
     return false;
+  }
+
+  function reserveSse(request: FastifyRequest, reply: FastifyReply): (() => void) | null {
+    const key = ipDigest(request.ip);
+    const current = sseConnectionsByIp.get(key) ?? 0;
+    if (current >= 20 || openSseConnections >= 500) {
+      void reply.code(429).send({ error: "Zu viele gleichzeitige Live-Verbindungen." });
+      return null;
+    }
+    sseConnectionsByIp.set(key, current + 1);
+    openSseConnections += 1;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      openSseConnections -= 1;
+      const remaining = (sseConnectionsByIp.get(key) ?? 1) - 1;
+      if (remaining > 0) sseConnectionsByIp.set(key, remaining);
+      else sseConnectionsByIp.delete(key);
+    };
+  }
+
+  function safeOffset(value: string | undefined): number {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.min(990, Math.max(0, Math.floor(parsed))) : 0;
   }
 
   app.get("/healthz", async (_request, reply) => {
@@ -124,15 +185,17 @@ export async function buildApp(options: AppOptions = {}) {
     return reply.send({ ok: true, spotifyConfigured: spotify.isConfigured() });
   });
 
-  app.get<{ Params: { code: string } }>("/api/parties/:code/state", async (request, reply) => {
-    const party = partyForCode(request.params.code, reply);
+  app.get<{ Params: { code: string } }>("/api/parties/:code/state", { config: { rateLimit: { max: 120, timeWindow: "1 minute" } } }, async (request, reply) => {
+    const party = partyForCode(request.params.code, request, reply);
     if (!party) return;
     return reply.send(db.partyState(party, request.guestDeviceId));
   });
 
-  app.get<{ Params: { code: string } }>("/api/parties/:code/events", async (request, reply) => {
-    const party = partyForCode(request.params.code, reply);
+  app.get<{ Params: { code: string } }>("/api/parties/:code/events", { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } }, async (request, reply) => {
+    const party = partyForCode(request.params.code, request, reply);
     if (!party) return;
+    const release = reserveSse(request, reply);
+    if (!release) return;
     reply.hijack();
     reply.raw.writeHead(200, {
       "Content-Type": "text/event-stream; charset=utf-8",
@@ -141,18 +204,21 @@ export async function buildApp(options: AppOptions = {}) {
       "X-Accel-Buffering": "no",
     });
     const unsubscribe = events.subscribe(Number(party.id), reply.raw);
-    request.raw.on("close", unsubscribe);
+    reply.raw.on("close", () => {
+      unsubscribe();
+      release();
+    });
   });
 
   app.get<{ Params: { code: string }; Querystring: { q?: string; offset?: string } }>("/api/parties/:code/search", { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } }, async (request, reply) => {
-    const party = partyForCode(request.params.code, reply);
+    const party = partyForCode(request.params.code, request, reply);
     if (!party || !Number(party.active)) return reply.code(410).send({ error: "Diese Party ist bereits beendet." });
-    const result = await spotify.search(request.query.q ?? "", Math.max(0, Number(request.query.offset) || 0));
+    const result = await spotify.search(request.query.q ?? "", safeOffset(request.query.offset));
     return reply.send(result);
   });
 
   app.post<{ Params: { code: string }; Body: { trackId?: string } }>("/api/parties/:code/requests", { config: { rateLimit: { max: 12, timeWindow: "1 minute" } } }, async (request, reply) => {
-    const party = partyForCode(request.params.code, reply);
+    const party = partyForCode(request.params.code, request, reply);
     if (!party) return;
     if (!Number(party.active)) return reply.code(410).send({ error: "Diese Party ist bereits beendet." });
     if (!enforcePartyOrigin(request, reply, String(party.guest_origin))) return;
@@ -167,7 +233,7 @@ export async function buildApp(options: AppOptions = {}) {
   });
 
   app.put<{ Params: { code: string; itemId: string } }>("/api/parties/:code/queue/:itemId/vote", { config: { rateLimit: { max: 40, timeWindow: "1 minute" } } }, async (request, reply) => {
-    const party = partyForCode(request.params.code, reply);
+    const party = partyForCode(request.params.code, request, reply);
     if (!party || !enforcePartyOrigin(request, reply, String(party.guest_origin))) return;
     try {
       const voted = db.toggleVote(Number(party.id), Number(request.params.itemId), request.guestDeviceId);
@@ -189,7 +255,7 @@ export async function buildApp(options: AppOptions = {}) {
       demoMode: config.demoMode,
     });
     const devices = await spotify.devices().catch(() => []);
-    const partyState = party ? db.partyState(party, "") : null;
+    const partyState = party ? db.partyState(party, "", true) : null;
     return reply.send({
       authenticated: true,
       csrfToken: session.csrf,
@@ -204,17 +270,20 @@ export async function buildApp(options: AppOptions = {}) {
     });
   });
 
-  app.get<{ Querystring: { setup_token?: string } }>("/api/admin/spotify/login", async (request, reply) => {
+  app.post<{ Body: { setupToken?: string } }>("/api/admin/spotify/login", { config: { rateLimit: { max: 10, timeWindow: "15 minutes" } } }, async (request, reply) => {
     const ownerExists = Boolean(db.getSetting("owner_account_id"));
-    if (!ownerExists && request.query.setup_token !== config.adminSetupToken) return reply.code(403).send({ error: "Das einmalige Setup-Token ist ungültig." });
+    if (!ownerExists && request.body?.setupToken !== config.adminSetupToken) return reply.code(403).send({ error: "Das einmalige Setup-Token ist ungültig." });
     if (config.demoMode) {
       createAdminSession(request, reply);
-      return reply.redirect("/admin");
+      return reply.send({ url: "/admin" });
     }
     if (!spotify.isConfigured()) return reply.code(503).send({ error: "Spotify Client ID und Secret fehlen." });
+    db.sqlite.prepare("DELETE FROM oauth_states WHERE expires_at < ?").run(new Date().toISOString());
+    const oauthStateCount = db.sqlite.prepare("SELECT COUNT(*) count FROM oauth_states").get() as { count: number };
+    if (Number(oauthStateCount.count) >= 100) return reply.code(429).send({ error: "Zu viele offene Anmeldeversuche. Bitte später erneut versuchen." });
     const state = randomToken(32);
     db.sqlite.prepare("INSERT INTO oauth_states(state_hash, setup, expires_at) VALUES (?, ?, ?)").run(hash(state), ownerExists ? 0 : 1, nowPlus(0.25));
-    return reply.redirect(spotify.authUrl(state));
+    return reply.send({ url: spotify.authUrl(state) });
   });
 
   app.get<{ Querystring: { code?: string; state?: string; error?: string } }>("/api/admin/spotify/callback", async (request, reply) => {
@@ -238,6 +307,7 @@ export async function buildApp(options: AppOptions = {}) {
   });
 
   app.post("/api/admin/logout", async (request, reply) => {
+    if (!requireAdmin(request, reply, true)) return;
     const token = verify(request.cookies[ADMIN_COOKIE], "admin");
     if (token) db.sqlite.prepare("DELETE FROM admin_sessions WHERE token_hash = ?").run(hash(token));
     reply.clearCookie(ADMIN_COOKIE, { path: "/" });
@@ -293,7 +363,7 @@ export async function buildApp(options: AppOptions = {}) {
 
   app.get<{ Querystring: { q?: string; offset?: string } }>("/api/admin/search", async (request, reply) => {
     if (!requireAdmin(request, reply)) return;
-    return reply.send(await spotify.search(request.query.q ?? "", Math.max(0, Number(request.query.offset) || 0)));
+    return reply.send(await spotify.search(request.query.q ?? "", safeOffset(request.query.offset)));
   });
 
   app.post<{ Body: { trackId?: string } }>("/api/admin/player/play-now", async (request, reply) => {

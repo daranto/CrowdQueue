@@ -12,7 +12,7 @@ CrowdQueue ist eine mobile, selbst gehostete Party Queue für Spotify Connect. G
 ## Schnellstart
 
 1. `.env.example` nach `.env` kopieren.
-2. `PUBLIC_BASE_URL`, `LAN_BASE_URL` und die drei Secrets setzen. Secrets können jeweils mit `openssl rand -base64 48` erzeugt werden.
+2. `PUBLIC_BASE_URL`, `LAN_BASE_URL` und die drei Secrets setzen. Secrets können jeweils mit `openssl rand -base64 48` erzeugt werden. Anschließend die Datei mit `chmod 600 .env` nur für den Betreiber lesbar machen.
 3. Im Spotify Developer Dashboard als Redirect URI exakt den Wert aus `SPOTIFY_REDIRECT_URI` eintragen. Spotify verlangt HTTPS; nur `http://127.0.0.1:<port>` ist für lokale Entwicklung erlaubt.
 4. Starten: `docker compose up -d --build`
 5. `/admin` öffnen, das `ADMIN_SETUP_TOKEN` eingeben und Spotify verbinden.
@@ -21,7 +21,9 @@ Der erste erfolgreich verbundene Spotify-Account wird dauerhaft als Besitzer fes
 
 ## Caddy
 
-[`Caddyfile.example`](./Caddyfile.example) enthält Beispiele für eine öffentliche Domain und einen nur im WLAN auflösbaren Hostnamen. Hinter Caddy muss `TRUST_PROXY=true` gesetzt sein. Stelle den App-Port im öffentlichen Betrieb nicht zusätzlich am Router frei, sondern leite ausschließlich über Caddy weiter.
+[`Caddyfile.example`](./Caddyfile.example) enthält Beispiele für eine öffentliche Domain und einen nur im WLAN auflösbaren Hostnamen. Hinter Caddy wird `TRUST_PROXY` auf die exakte Proxy-IP oder ein enges privates Proxy-Netz gesetzt. `true` wird aus Sicherheitsgründen nur als Vertrauen in lokale/private Netze interpretiert. Stelle den App-Port im öffentlichen Betrieb nicht zusätzlich am Router frei, sondern leite ausschließlich über Caddy weiter.
+
+Bei vorgeschaltetem Cloudflare müssen zusätzlich „Always Use HTTPS“, HSTS und als minimale TLS-Version mindestens TLS 1.2 aktiviert sein. Der Origin-Port darf nur für Caddy beziehungsweise den Tunnel erreichbar sein.
 
 Eine Party wird beim Erstellen entweder an die öffentliche oder die WLAN-Basis-URL gebunden. Der erzeugte QR-Code verwendet genau diese Adresse.
 

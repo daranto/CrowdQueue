@@ -11,6 +11,10 @@ services:
     volumes:
       - crowdqueue_data:/data
     read_only: true
+    init: true
+    pids_limit: 100
+    cap_drop:
+      - ALL
     tmpfs:
       - /tmp:size=16m,noexec,nosuid,nodev
     security_opt:

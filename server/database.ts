@@ -367,7 +367,7 @@ export class AppDatabase {
     };
   }
 
-  partyState(party: Row, deviceId: string): PartyState {
+  partyState(party: Row, deviceId: string, includeSensitivePlayerData = false): PartyState {
     const partyId = Number(party.id);
     const player = this.getPlayerState(partyId);
     const queue = this.queueItems(partyId, deviceId);
@@ -388,7 +388,7 @@ export class AppDatabase {
       player: {
         isPlaying: player.isPlaying,
         progressMs: player.progressMs,
-        deviceId: player.deviceId,
+        deviceId: includeSensitivePlayerData ? player.deviceId : null,
         deviceName: player.deviceName,
         deviceRestricted: player.deviceRestricted,
         updatedAt: player.updatedAt,
@@ -411,5 +411,11 @@ export class AppDatabase {
     `).run(cutoff);
     this.sqlite.prepare("DELETE FROM admin_sessions WHERE expires_at < ?").run(iso());
     this.sqlite.prepare("DELETE FROM oauth_states WHERE expires_at < ?").run(iso());
+    this.sqlite.prepare(`
+      DELETE FROM guest_devices
+      WHERE last_seen_at < ?
+        AND id NOT IN (SELECT requested_by FROM queue_items)
+        AND id NOT IN (SELECT device_id FROM votes)
+    `).run(cutoff);
   }
 }

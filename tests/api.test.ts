@@ -60,14 +60,24 @@ describe("HTTP API", () => {
     apps.push(app);
     const initial = await app.inject({ url: "/api/admin/state" });
     assert.equal(initial.json().setupRequired, true);
-    assert.equal((await app.inject({ url: "/api/admin/spotify/login" })).statusCode, 403);
+    assert.equal((await app.inject({ method: "GET", url: "/api/admin/spotify/login?setup_token=change-me" })).statusCode, 404);
+    assert.equal((await app.inject({ method: "POST", url: "/api/admin/spotify/login", payload: {} })).statusCode, 403);
 
     app.appDb.setSetting("owner_account_id", "existing-owner");
     const returning = await app.inject({ url: "/api/admin/state" });
     assert.equal(returning.json().setupRequired, false);
-    const login = await app.inject({ url: "/api/admin/spotify/login" });
-    assert.equal(login.statusCode, 302);
-    assert.equal(login.headers.location, "/admin");
+    const login = await app.inject({ method: "POST", url: "/api/admin/spotify/login", payload: {} });
+    assert.equal(login.statusCode, 200);
+    assert.equal(login.json().url, "/admin");
     assert.match(login.headers["set-cookie"] as string, /cq_admin=/);
+  });
+
+  it("persistiert für ungültige Party-Codes keine Gastgeräte", async () => {
+    const app = await buildApp({ databasePath: ":memory:", logger: false });
+    apps.push(app);
+    const response = await app.inject({ url: "/api/parties/not-a-real-code/state" });
+    assert.equal(response.statusCode, 404);
+    const devices = app.appDb.sqlite.prepare("SELECT COUNT(*) count FROM guest_devices").get() as { count: number };
+    assert.equal(Number(devices.count), 0);
   });
 });
