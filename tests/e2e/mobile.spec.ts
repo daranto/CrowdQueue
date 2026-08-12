@@ -20,6 +20,25 @@ test("Direkter Aufruf begrüßt Gäste nur mit dem QR-Code-Hinweis", async ({ pa
   await expect(page.getByRole("link", { name: /Admin|Party einrichten/ })).toHaveCount(0);
 });
 
+test("Leerer Wiedergabestatus nutzt mobil die gesamte Karte", async ({ page, request }) => {
+  const response = await request.get("/api/admin/state", { headers: { "x-demo-admin": "true" } });
+  const admin = await response.json();
+  await page.route(`**/api/parties/${admin.party.party.code}/state`, async (route) => {
+    const stateResponse = await route.fetch();
+    const partyState = await stateResponse.json();
+    await route.fulfill({ response: stateResponse, json: { ...partyState, nowPlaying: null } });
+  });
+  await page.goto(`/p/${admin.party.party.code}`);
+
+  const emptyNowPlaying = page.locator(".now-playing > .empty");
+  await expect(emptyNowPlaying.getByRole("heading", { name: "Noch spielt nichts" })).toBeVisible();
+  const layout = await emptyNowPlaying.evaluate((element) => {
+    const parentWidth = element.parentElement?.getBoundingClientRect().width ?? 0;
+    return { width: element.getBoundingClientRect().width, parentWidth };
+  });
+  expect(layout.width).toBeGreaterThan(layout.parentWidth * 0.8);
+});
+
 test("Gast kann mobil suchen, wünschen und voten", async ({ page, request }) => {
   const response = await request.get("/api/admin/state", { headers: { "x-demo-admin": "true" } });
   const admin = await response.json();
