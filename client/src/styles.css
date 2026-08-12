@@ -178,12 +178,13 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .qr-export-layout { display: grid; grid-template-columns: minmax(230px, .78fr) minmax(310px, 1.22fr); gap: clamp(1rem, 3vw, 2rem); align-items: start; }
 .qr-paper-preview { width: min(100%, 285px); aspect-ratio: 210 / 297; justify-self: center; overflow: hidden; background: white; color: #10100f; border-radius: 3px; box-shadow: 0 16px 45px rgba(0,0,0,.38); }
 .qr-paper-preview--mono { filter: grayscale(1); }
-.qr-preview-poster { height: 100%; display: flex; flex-direction: column; align-items: center; padding: 8% 9%; text-align: center; background: #10100f; color: white; border-top: 6px solid var(--lime); }
+.qr-preview-poster { height: 100%; display: flex; flex-direction: column; align-items: center; padding: 8% 9%; text-align: center; background: white; color: #10100f; border-top: 6px solid var(--lime); }
 .qr-paper-preview--mono .qr-preview-poster { background: white; color: #10100f; border: 1px solid #10100f; border-top-width: 1px; margin: 4%; height: 92%; }
 .qr-preview-poster small { align-self: flex-start; color: var(--lime); font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
 .qr-paper-preview--mono .qr-preview-poster small { color: #10100f; }
 .qr-preview-poster > strong { width: 100%; margin: 9% 0 6%; font-family: "Arial Narrow", Arial, sans-serif; font-size: clamp(1.05rem, 3vw, 1.7rem); line-height: 1; overflow-wrap: anywhere; }
-.qr-preview-poster > span { display: grid; place-items: center; width: 88%; aspect-ratio: 1; margin: auto 0; padding: 6%; border-radius: 5%; background: white; }
+.qr-preview-poster > span { display: grid; place-items: center; width: 88%; aspect-ratio: 1; margin: auto 0; padding: 5%; border: 3px solid var(--lime); border-radius: 5%; background: white; }
+.qr-paper-preview--mono .qr-preview-poster > span { border-color: #10100f; }
 .qr-preview-poster img { width: 100%; }
 .qr-preview-poster b { margin: 8% 0 3%; font-size: clamp(.7rem, 1.8vw, 1rem); }
 .qr-preview-sheet { height: 100%; display: grid; padding: 4%; }

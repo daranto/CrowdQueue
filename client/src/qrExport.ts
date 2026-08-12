@@ -83,15 +83,12 @@ function partyTitleLines(doc: jsPDF, partyName: string, maxWidth: number, maxLin
 
 function drawPoster(doc: jsPDF, options: QrExportOptions, qrDataUrl: string): void {
   const color = options.tone === "color";
-  setFillColor(doc, color ? BLACK : [255, 255, 255]);
+  doc.setFillColor(255, 255, 255);
   doc.rect(0, 0, PAGE_WIDTH, PAGE_HEIGHT, "F");
 
   if (color) {
     setFillColor(doc, LIME);
     doc.rect(0, 0, PAGE_WIDTH, 5, "F");
-    doc.circle(194, 29, 27, "F");
-    setFillColor(doc, BLACK);
-    doc.circle(194, 29, 18, "F");
   } else {
     setDrawColor(doc, BLACK);
     doc.setLineWidth(0.8);
@@ -104,22 +101,20 @@ function drawPoster(doc: jsPDF, options: QrExportOptions, qrDataUrl: string): vo
   setTextColor(doc, color ? LIME : BLACK);
   doc.text("DEINE PARTY. DEINE MUSIK.", 16, 42);
 
-  setTextColor(doc, color ? [255, 255, 255] : BLACK);
+  setTextColor(doc, BLACK);
   doc.setFont("helvetica", "bold");
   const titleLines = partyTitleLines(doc, options.partyName, 174, 2, 30, 20);
   const titleY = 55;
   titleLines.forEach((line, index) => doc.text(line, 16, titleY + index * 11));
 
   const panelY = titleLines.length > 1 ? 84 : 75;
-  const panelHeight = titleLines.length > 1 ? 171 : 180;
-  doc.setFillColor(255, 255, 255);
-  setDrawColor(doc, color ? LIME : BLACK);
-  doc.setLineWidth(color ? 0 : 0.55);
-  doc.roundedRect(25, panelY, 160, panelHeight, 4, 4, color ? "F" : "FD");
-
   const qrSize = 116;
-  const qrY = panelY + 10;
-  doc.addImage(qrDataUrl, "PNG", (PAGE_WIDTH - qrSize) / 2, qrY, qrSize, qrSize, undefined, "FAST");
+  const qrX = (PAGE_WIDTH - qrSize) / 2;
+  const qrY = panelY + 8;
+  setDrawColor(doc, color ? LIME : BLACK);
+  doc.setLineWidth(color ? 1.25 : 0.55);
+  doc.roundedRect(qrX - 3.5, qrY - 3.5, qrSize + 7, qrSize + 7, 3, 3);
+  doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize, undefined, "FAST");
 
   setTextColor(doc, BLACK);
   doc.setFont("helvetica", "bold");
@@ -127,12 +122,12 @@ function drawPoster(doc: jsPDF, options: QrExportOptions, qrDataUrl: string): vo
   doc.text("Musikwünsche abgeben & Favoriten wählen", PAGE_WIDTH / 2, qrY + qrSize + 17, { align: "center" });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10.5);
-  doc.text("Songs wünschen - Queue sehen - Favoriten voten", PAGE_WIDTH / 2, qrY + qrSize + 26, { align: "center" });
+  doc.text("Songs wünschen - Warteschlange sehen - Favoriten wählen", PAGE_WIDTH / 2, qrY + qrSize + 26, { align: "center" });
   doc.setFontSize(8.5);
   setTextColor(doc, MUTED);
   doc.text("Ohne Anmeldung. Einfach Kamera öffnen und QR-Code scannen.", PAGE_WIDTH / 2, qrY + qrSize + 36, { align: "center" });
 
-  setTextColor(doc, color ? [230, 232, 224] : BLACK);
+  setTextColor(doc, color ? MUTED : BLACK);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
   doc.text(ellipsize(doc, options.guestUrl, 172), PAGE_WIDTH / 2, 274, { align: "center" });
