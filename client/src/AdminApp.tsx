@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 import { Brand, EmptyState, Loading, Notice, QueueRow, SearchResult } from "./components";
+import { QrExportDialog } from "./QrExportDialog";
 import type { AdminState, Track } from "./types";
 import { useSearch } from "./useSearch";
 
@@ -14,6 +15,7 @@ export function AdminApp() {
   const [setupToken, setSetupToken] = useState("");
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState<string | number | null>(null);
+  const [qrExportOpen, setQrExportOpen] = useState(false);
   const search = useSearch("/api/admin/search", state?.authenticated ? query : "");
   const demoMode = state?.demoMode ?? false;
   const oauthError = new URLSearchParams(window.location.search).get("error");
@@ -147,6 +149,7 @@ export function AdminApp() {
                 {state.qrDataUrl && <img src={state.qrDataUrl} alt={`QR-Code zum Gast-Link ${state.party.party.guestUrl}`} />}
                 <a href={state.party.party.guestUrl} target="_blank" rel="noreferrer">{state.party.party.guestUrl}</a>
                 <button className="secondary-button" type="button" onClick={() => void navigator.clipboard.writeText(state.party!.party.guestUrl).then(() => setMessage("Gast-Link kopiert."))}>Link kopieren</button>
+                {state.qrDataUrl && <button className="secondary-button qr-export-trigger" type="button" onClick={() => setQrExportOpen(true)}>QR-Code drucken & exportieren</button>}
               </div>
               <div className="admin-card controls">
                 <span className="section-kicker">Spotify Connect</span><h2>Wiedergabe</h2>
@@ -173,6 +176,15 @@ export function AdminApp() {
           </>
         )}
       </main>
+      {state.party && state.qrDataUrl && (
+        <QrExportDialog
+          open={qrExportOpen}
+          partyName={state.party.party.name}
+          guestUrl={state.party.party.guestUrl}
+          qrDataUrl={state.qrDataUrl}
+          onClose={() => setQrExportOpen(false)}
+        />
+      )}
     </div>
   );
 }

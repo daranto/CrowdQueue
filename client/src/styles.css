@@ -161,11 +161,50 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .party-code h2 { text-align: left; }
 .party-code img { width: min(100%, 240px); margin: 1rem auto; padding: .5rem; background: white; border-radius: .5rem; }
 .party-code > a { display: block; color: var(--lime); font-size: .76rem; overflow-wrap: anywhere; }
+.party-code .secondary-button { width: 100%; }
+.qr-export-trigger { border-color: #7d8d45; color: var(--lime); }
 .control-buttons { display: grid; grid-template-columns: repeat(3,1fr); gap: .5rem; margin: 1rem 0; }
 .control-buttons button { min-height: 48px; border: 1px solid #5d6056; background: #242520; border-radius: .45rem; }
 .controls .danger-button { margin-top: 1.2rem; width: 100%; }
 .admin-search .search-field { max-width: 620px; }
 .admin-queue .queue-row { grid-template-columns: 26px auto minmax(0,1fr) auto; }
+
+.qr-export-dialog { width: min(960px, calc(100% - 2rem)); max-height: min(880px, calc(100dvh - 2rem)); overflow: auto; color: var(--ink); background: var(--surface); border: 1px solid #55584f; border-radius: 1rem; padding: clamp(1.1rem, 3vw, 1.8rem); box-shadow: 0 28px 90px rgba(0,0,0,.7); }
+.qr-export-dialog::backdrop { background: rgba(4,5,3,.82); backdrop-filter: blur(5px); }
+.qr-export-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.qr-export-heading h2 { margin-bottom: 0; }
+.dialog-close { width: 48px; height: 48px; flex: 0 0 auto; border: 1px solid #55584f; border-radius: 50%; background: #242520; color: var(--ink); font-size: 1.7rem; line-height: 1; }
+.qr-export-intro { margin: .75rem 0 1.2rem; color: var(--muted); line-height: 1.5; }
+.qr-export-layout { display: grid; grid-template-columns: minmax(230px, .78fr) minmax(310px, 1.22fr); gap: clamp(1rem, 3vw, 2rem); align-items: start; }
+.qr-paper-preview { width: min(100%, 285px); aspect-ratio: 210 / 297; justify-self: center; overflow: hidden; background: white; color: #10100f; border-radius: 3px; box-shadow: 0 16px 45px rgba(0,0,0,.38); }
+.qr-paper-preview--mono { filter: grayscale(1); }
+.qr-preview-poster { height: 100%; display: flex; flex-direction: column; align-items: center; padding: 8% 9%; text-align: center; background: #10100f; color: white; border-top: 6px solid var(--lime); }
+.qr-paper-preview--mono .qr-preview-poster { background: white; color: #10100f; border: 1px solid #10100f; border-top-width: 1px; margin: 4%; height: 92%; }
+.qr-preview-poster small { align-self: flex-start; color: var(--lime); font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
+.qr-paper-preview--mono .qr-preview-poster small { color: #10100f; }
+.qr-preview-poster > strong { width: 100%; margin: 9% 0 6%; font-family: "Arial Narrow", Arial, sans-serif; font-size: clamp(1.05rem, 3vw, 1.7rem); line-height: 1; overflow-wrap: anywhere; }
+.qr-preview-poster > span { display: grid; place-items: center; width: 88%; aspect-ratio: 1; margin: auto 0; padding: 6%; border-radius: 5%; background: white; }
+.qr-preview-poster img { width: 100%; }
+.qr-preview-poster b { margin: 8% 0 3%; font-size: clamp(.7rem, 1.8vw, 1rem); }
+.qr-preview-sheet { height: 100%; display: grid; padding: 4%; }
+.qr-preview-card { min-width: 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3%; padding: 5%; border: 1px dashed #979990; border-top: 3px solid var(--lime); overflow: hidden; }
+.qr-paper-preview--mono .qr-preview-card { border-top: 1px dashed #979990; }
+.qr-preview-card small { max-width: 100%; font-weight: 800; color: #202119; white-space: nowrap; overflow: hidden; }
+.qr-preview-card img { width: min(70%, 78px); }
+.qr-preview-card strong { max-width: 100%; font-size: clamp(.28rem, .8vw, .55rem); white-space: nowrap; }
+.qr-export-options { display: grid; gap: 1rem; }
+.qr-export-options fieldset { display: grid; gap: .55rem; padding: 0; margin: 0; border: 0; }
+.qr-export-options legend, .qr-count-select > span { margin-bottom: .5rem; color: #d5d7cf; font-size: .8rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+.choice-card { min-height: 62px; display: grid !important; grid-template-columns: auto 1fr !important; grid-template-rows: auto auto; align-items: center !important; column-gap: .75rem !important; row-gap: .15rem !important; margin: 0 !important; padding: .7rem .8rem; border: 1px solid #4b4e45; border-radius: .6rem; background: #151613; cursor: pointer; }
+.choice-card--active { border-color: var(--lime); background: rgba(201,241,58,.07); box-shadow: inset 3px 0 0 var(--lime); }
+.choice-card input { grid-row: 1 / 3; width: 21px !important; height: 21px !important; flex: 0 0 auto; accent-color: var(--lime); }
+.choice-card strong { color: var(--ink); font-size: .9rem; }
+.choice-card small { color: var(--muted); line-height: 1.35; }
+.qr-count-select { display: grid; gap: .4rem; margin: 0 !important; }
+.qr-count-select select { margin: 0; }
+.qr-export-privacy { margin: 1rem 0; color: var(--muted); font-size: .75rem; line-height: 1.45; }
+.qr-export-actions { display: flex; justify-content: flex-end; gap: .7rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.qr-export-actions .secondary-button { margin-top: 0; }
 
 .home-hero { min-height: calc(100vh - 185px); max-width: 1180px; margin: 0 auto; padding: clamp(4rem, 10vw, 8rem) max(1.1rem, env(safe-area-inset-left)); }
 .home-hero h1 { max-width: 850px; font-size: clamp(3.4rem, 11vw, 8.5rem); margin-bottom: 1.4rem; }
@@ -186,6 +225,16 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   .admin-user > span { display: none; }
   .footer { flex-wrap: wrap; }
   .footer p { order: 3; width: 100%; flex-basis: 100%; }
+  .qr-export-dialog { width: calc(100% - 1rem); max-height: calc(100dvh - 1rem); padding: 1rem; }
+  .qr-export-layout { grid-template-columns: 1fr; }
+  .qr-paper-preview { width: min(100%, 220px); }
+  .qr-export-actions { position: sticky; bottom: -1rem; z-index: 2; margin: 0 -1rem -1rem; padding: .85rem 1rem calc(.85rem + env(safe-area-inset-bottom)); background: var(--surface); }
+  .qr-export-actions button { flex: 1; }
+}
+
+@media (max-width: 430px) {
+  .qr-export-actions { flex-direction: column-reverse; }
+  .qr-export-actions button { width: 100%; }
 }
 
 @media (max-width: 390px) {

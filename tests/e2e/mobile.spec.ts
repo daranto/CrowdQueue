@@ -71,3 +71,35 @@ test("Adminfluss ist auf mobilen Viewports vollständig erreichbar", async ({ pa
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   expect(overflow).toBe(false);
 });
+
+test("Admin kann QR-Druckvorlagen konfigurieren und als PDF laden", async ({ page }, testInfo) => {
+  await page.setExtraHTTPHeaders({ "x-demo-admin": "true" });
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "QR-Code drucken & exportieren" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "QR-Code exportieren" });
+  await expect(dialog).toBeVisible();
+
+  const posterDownloadPromise = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "A4-PDF herunterladen" }).click();
+  const posterDownload = await posterDownloadPromise;
+  expect(posterDownload.suggestedFilename()).toMatch(/a4-plakat-farbe\.pdf$/);
+  if (process.env.QR_QA_DIR) await posterDownload.saveAs(`${process.env.QR_QA_DIR}/${testInfo.project.name}-poster-farbe.pdf`);
+
+  await dialog.getByRole("radio", { name: /Kartenbogen/ }).check();
+  await dialog.getByLabel("Anzahl pro A4-Seite").selectOption("12");
+  await dialog.getByRole("radio", { name: /Schwarzweiß/ }).check();
+  await expect(dialog.getByText("SCANNEN & VOTEN")).toHaveCount(12);
+
+  const downloadPromise = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "A4-PDF herunterladen" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/a4-12-karten-laser\.pdf$/);
+  if (process.env.QR_QA_DIR) await download.saveAs(`${process.env.QR_QA_DIR}/${testInfo.project.name}-karten-laser.pdf`);
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+  const pdf = Buffer.concat(chunks);
+  expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
+  expect(pdf.length).toBeGreaterThan(10_000);
+});
