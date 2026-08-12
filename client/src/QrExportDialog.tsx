@@ -63,9 +63,9 @@ export function QrExportDialog({ open, partyName, guestUrl, qrDataUrl, onClose }
   const grid = cardGrid(cardCount);
   const previewCards = Array.from({ length: cardCount }, (_, index) => (
     <span className="qr-preview-card" key={index}>
-      <small>CrowdQueue</small>
+      <small>Party-Playlist</small>
       <img src={qrDataUrl} alt="" />
-      <strong>SCANNEN & VOTEN</strong>
+      <strong><span>Musikwünsche abgeben</span><span>& Favoriten wählen</span></strong>
     </span>
   ));
 
@@ -87,13 +87,13 @@ export function QrExportDialog({ open, partyName, guestUrl, qrDataUrl, onClose }
         <div className={`qr-paper-preview qr-paper-preview--${layout} qr-paper-preview--${tone}`} aria-label="Vorschau der gewählten Druckvorlage">
           {layout === "poster" ? (
             <div className="qr-preview-poster">
-              <small>CrowdQueue Party</small>
+              <small>Party-Playlist</small>
               <strong>{partyName}</strong>
               <span><img src={qrDataUrl} alt="" /></span>
-              <b>Scannen & mitbestimmen</b>
+              <b>Musikwünsche abgeben & Favoriten wählen</b>
             </div>
           ) : (
-            <div className="qr-preview-sheet" style={{ gridTemplateColumns: `repeat(${grid.columns}, 1fr)`, gridTemplateRows: `repeat(${grid.rows}, 1fr)` }}>
+            <div className={`qr-preview-sheet ${cardCount >= 9 ? "qr-preview-sheet--dense" : ""} ${cardCount === 12 ? "qr-preview-sheet--very-dense" : ""}`} style={{ gridTemplateColumns: `repeat(${grid.columns}, 1fr)`, gridTemplateRows: `repeat(${grid.rows}, 1fr)` }}>
               {previewCards}
             </div>
           )}
@@ -125,7 +125,7 @@ export function QrExportDialog({ open, partyName, guestUrl, qrDataUrl, onClose }
             <legend>Druckart</legend>
             <label htmlFor="qr-tone-color" className={tone === "color" ? "choice-card choice-card--active" : "choice-card"}>
               <input id="qr-tone-color" type="radio" name="qr-tone" checked={tone === "color"} onChange={() => setTone("color")} />
-              <strong>Farbdruck</strong><small>CrowdQueue-Limette mit kräftigem Kontrast</small>
+              <strong>Farbdruck</strong><small>Limettengrüne Akzente mit kräftigem Kontrast</small>
             </label>
             <label htmlFor="qr-tone-mono" className={tone === "mono" ? "choice-card choice-card--active" : "choice-card"}>
               <input id="qr-tone-mono" type="radio" name="qr-tone" checked={tone === "mono"} onChange={() => setTone("mono")} />

@@ -55,9 +55,10 @@ function dataUrlBlob(dataUrl: string): Blob {
 }
 
 function drawBrand(doc: jsPDF, x: number, y: number, scale: number, accent: PdfColor = LIME): void {
+  const darkAccent = accent[0] < 80 && accent[1] < 80 && accent[2] < 80;
   setFillColor(doc, accent);
   doc.circle(x + 3.2 * scale, y + 3.2 * scale, 3.2 * scale, "F");
-  setDrawColor(doc, BLACK);
+  setDrawColor(doc, darkAccent ? [255, 255, 255] : BLACK);
   doc.setLineWidth(0.55 * scale);
   doc.line(x + 1.45 * scale, y + 2.45 * scale, x + 4.95 * scale, y + 2.15 * scale);
   doc.line(x + 1.75 * scale, y + 3.35 * scale, x + 4.55 * scale, y + 3.12 * scale);
@@ -65,7 +66,7 @@ function drawBrand(doc: jsPDF, x: number, y: number, scale: number, accent: PdfC
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9 * scale);
   setTextColor(doc, accent);
-  doc.text("CrowdQueue", x + 8.3 * scale, y + 5.15 * scale);
+  doc.text("Party-Playlist", x + 8.3 * scale, y + 5.15 * scale);
 }
 
 function partyTitleLines(doc: jsPDF, partyName: string, maxWidth: number, maxLines: number, initialSize: number, minimumSize: number): string[] {
@@ -122,8 +123,8 @@ function drawPoster(doc: jsPDF, options: QrExportOptions, qrDataUrl: string): vo
 
   setTextColor(doc, BLACK);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(18);
-  doc.text("Scannen & mitbestimmen", PAGE_WIDTH / 2, qrY + qrSize + 17, { align: "center" });
+  doc.setFontSize(16.5);
+  doc.text("Musikwünsche abgeben & Favoriten wählen", PAGE_WIDTH / 2, qrY + qrSize + 17, { align: "center" });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10.5);
   doc.text("Songs wünschen - Queue sehen - Favoriten voten", PAGE_WIDTH / 2, qrY + qrSize + 26, { align: "center" });
@@ -173,8 +174,12 @@ function drawCard(doc: jsPDF, options: QrExportOptions, qrDataUrl: string, x: nu
   const footerY = y + height - (compact ? 5 : 8);
   doc.setTextColor(...BLACK);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(compact ? 6.5 : 9.5);
-  doc.text(compact ? "SCANNEN & VOTEN" : "Scannen. Wünschen. Voten.", x + width / 2, footerY, { align: "center" });
+  doc.setFontSize(compact ? 5.9 : 8.8);
+  if (compact) {
+    doc.text(["MUSIKWÜNSCHE ABGEBEN", "& FAVORITEN WÄHLEN"], x + width / 2, footerY - 2.4, { align: "center", lineHeightFactor: 1.05 });
+  } else {
+    doc.text("Musikwünsche abgeben & Favoriten wählen", x + width / 2, footerY, { align: "center" });
+  }
   if (!compact) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(6.5);

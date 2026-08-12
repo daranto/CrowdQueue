@@ -89,7 +89,11 @@ test("Admin kann QR-Druckvorlagen konfigurieren und als PDF laden", async ({ pag
   await dialog.getByRole("radio", { name: /Kartenbogen/ }).check();
   await dialog.getByLabel("Anzahl pro A4-Seite").selectOption("12");
   await dialog.getByRole("radio", { name: /Schwarzweiß/ }).check();
-  await expect(dialog.getByText("SCANNEN & VOTEN")).toHaveCount(12);
+  await expect(dialog.getByText("Musikwünsche abgeben")).toHaveCount(12);
+  const clippedPreviewText = await dialog.locator(".qr-preview-card small, .qr-preview-card strong").evaluateAll((elements) =>
+    elements.filter((element) => element.scrollWidth > element.clientWidth || element.scrollHeight > element.clientHeight).length,
+  );
+  expect(clippedPreviewText).toBe(0);
 
   const downloadPromise = page.waitForEvent("download");
   await dialog.getByRole("button", { name: "A4-PDF herunterladen" }).click();
