@@ -1,0 +1,13 @@
+import { Brand } from "./components";
+
+export function HomePage() {
+  return <div className="home-page"><header className="topbar"><Brand /></header><main id="main" className="home-hero"><span className="section-kicker">Deiner Party beitreten</span><h1>Scanne den<br />Party-QR-Code.</h1><p>Bitte scanne den QR-Code des Gastgebers oder öffne den geteilten Party-Link. So gelangst du direkt zur Musiksuche und zur gemeinsamen Warteschlange.</p></main><footer className="footer"><Brand compact /><p>Für private, nicht kommerzielle Feiern.</p><a href="/datenschutz">Datenschutz</a></footer></div>;
+}
+
+export function PrivacyPage() {
+  return <div className="static-page"><header className="topbar"><Brand /><a className="text-link" href="/">Startseite</a></header><main id="main" className="prose"><span className="section-kicker">Transparenz</span><h1>Datenschutz</h1><p>Diese selbst gehostete Anwendung verarbeitet nur die Daten, die für die Party Queue erforderlich sind.</p><h2>Gerätekennung und Abstimmungen</h2><p>Beim ersten Besuch wird eine zufällige, signierte Kennung als HttpOnly-Cookie auf deinem Gerät gespeichert. Sie verhindert doppelte Stimmen und begrenzt offene Wünsche. Wenn du Browserdaten löschst, entsteht eine neue Kennung.</p><h2>IP-Adressen</h2><p>IP-Adressen werden nicht im Klartext gespeichert. Zur Missbrauchsbegrenzung wird ein nur für den jeweiligen Tag gültiger kryptografischer Prüfwert gebildet.</p><h2>Spotify-Daten</h2><p>Songtitel, Künstler, Album, Links und Cover-URLs stammen von Spotify. Cover werden nicht heruntergeladen oder lokal kopiert. Spotify-Metadaten werden spätestens sieben Tage nach Ende einer Party gelöscht.</p><h2>Admin-Verbindung</h2><p>Der Spotify-Zugriff des Administrators wird verschlüsselt in der lokalen Datenbank des selbst betriebenen Servers gespeichert. Gäste erhalten diese Zugangsdaten niemals.</p><h2>Löschen</h2><p>Der Administrator kann eine Party beenden. Die zugehörigen Daten werden automatisch nach sieben Tagen gelöscht. Die Gerätekennung kann jederzeit über die Browserdaten entfernt werden.</p><p className="fine-print">Verantwortlich für den Betrieb und die konkrete Datenschutzerklärung ist die Person, die diesen Server bereitstellt.</p></main></div>;
+}
+
+export function NotFoundPage() {
+  return <div className="static-page"><header className="topbar"><Brand /></header><main id="main" className="auth-card"><span className="section-kicker">404</span><h1>Hier spielt nichts.</h1><p>Der Link ist ungültig oder nicht mehr verfügbar.</p><a className="primary-button" href="/">Zur Startseite</a></main></div>;
+}
