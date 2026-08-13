@@ -20,6 +20,19 @@ test("Direkter Aufruf begrüßt Gäste nur mit dem QR-Code-Hinweis", async ({ pa
   await expect(page.getByRole("link", { name: /Admin|Party einrichten/ })).toHaveCount(0);
 });
 
+test("Logo bleibt beim Wechsel zur Datenschutzseite an derselben Position", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  const homeLogoX = await page.locator(".topbar .brand").evaluate((element) => element.getBoundingClientRect().x);
+  await page.getByRole("link", { name: "Datenschutz" }).click();
+  await expect(page).toHaveURL(/\/datenschutz$/);
+  const privacyLogoX = await page.locator(".topbar .brand").evaluate((element) => element.getBoundingClientRect().x);
+  const scrollbarGutter = await page.locator("html").evaluate((element) => getComputedStyle(element).scrollbarGutter);
+
+  expect(scrollbarGutter).toContain("stable");
+  expect(privacyLogoX).toBeCloseTo(homeLogoX, 1);
+});
+
 test("Leerer Wiedergabestatus nutzt mobil die gesamte Karte", async ({ page, request }) => {
   const response = await request.get("/api/admin/state", { headers: { "x-demo-admin": "true" } });
   const admin = await response.json();

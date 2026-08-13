@@ -17,7 +17,7 @@
 }
 
 * { box-sizing: border-box; }
-html { min-width: 320px; background: var(--bg); scroll-behavior: smooth; }
+html { min-width: 320px; background: var(--bg); scroll-behavior: smooth; scrollbar-gutter: stable; }
 body { margin: 0; min-width: 320px; min-height: 100vh; background: radial-gradient(circle at 80% -10%, rgba(201, 241, 58, .08), transparent 30rem), var(--bg); }
 body, button, input, select { font: inherit; }
 button, a, input, select { -webkit-tap-highlight-color: transparent; }
