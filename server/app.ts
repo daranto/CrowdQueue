@@ -13,7 +13,6 @@ import { PartyEvents } from "./events.js";
 import { ApiMetrics, type StatisticsRange } from "./metrics.js";
 import { ipDigest, matchesSecret, randomToken, sign, verify } from "./security.js";
 import { SpotifyClient, SpotifyError } from "./spotify.js";
-import type { SpotifyDevice } from "./types.js";
 
 const GUEST_COOKIE = "cq_device";
 const ADMIN_COOKIE = "cq_admin";
@@ -251,6 +250,7 @@ export async function buildApp(options: AppOptions = {}) {
       "X-Accel-Buffering": "no",
     });
     const unsubscribe = events.subscribe(Number(party.id), reply.raw);
+    controller.wakeIfStale(60_000, 500);
     reply.raw.on("close", () => {
       unsubscribe();
       release();
@@ -272,6 +272,7 @@ export async function buildApp(options: AppOptions = {}) {
     try {
       const track = await spotify.track(String(request.body?.trackId ?? ""), "guest");
       const result = db.requestTrack(Number(party.id), request.guestDeviceId, track);
+      if (result.added) controller.wake(500);
       events.publish(Number(party.id));
       return reply.code(result.added ? 201 : 200).send(result);
     } catch (error) {
@@ -301,14 +302,6 @@ export async function buildApp(options: AppOptions = {}) {
       setupRequired: !db.getSetting("owner_account_id"),
       demoMode: config.demoMode,
     });
-    let devices: SpotifyDevice[] = [];
-    if (spotify.isConnected()) {
-      try {
-        devices = await spotify.devices();
-      } catch (error) {
-        if (!(error instanceof SpotifyError)) throw error;
-      }
-    }
     const partyState = party ? stateForParty(party, "", true) : null;
     return reply.send({
       authenticated: true,
@@ -319,7 +312,6 @@ export async function buildApp(options: AppOptions = {}) {
       party: partyState,
       qrDataUrl: partyState ? await QRCode.toDataURL(partyState.party.guestUrl, { margin: 1, width: 320 }) : null,
       selectedDeviceId: party?.selected_device_id ?? null,
-      devices,
       publicBaseUrl: config.publicBaseUrl,
       lanBaseUrl: config.lanBaseUrl,
       demoMode: config.demoMode,
@@ -369,6 +361,7 @@ export async function buildApp(options: AppOptions = {}) {
     }
     if (!owner) db.setSetting("owner_account_id", profile.accountId);
     createAdminSession(request, reply);
+    controller.wake(500);
     return reply.redirect("/admin?connected=1");
   });
 
@@ -388,8 +381,7 @@ export async function buildApp(options: AppOptions = {}) {
     const guestOrigin = cleanOrigin(request.body?.origin === "lan" ? config.lanBaseUrl : config.publicBaseUrl);
     const code = randomToken(12);
     const party = db.createParty(name, code, guestOrigin);
-    controller.start();
-    void controller.tick();
+    controller.wake();
     const guestUrl = `${guestOrigin}/p/${code}`;
     return reply.code(201).send({ state: stateForParty(party, ""), qrDataUrl: await QRCode.toDataURL(guestUrl, { margin: 1, width: 320 }) });
   });
@@ -400,6 +392,7 @@ export async function buildApp(options: AppOptions = {}) {
     if (!party) return reply.code(404).send({ error: "Keine aktive Party." });
     db.endParty(Number(party.id));
     events.publish(Number(party.id), "ended");
+    controller.wake();
     return reply.send({ ok: true });
   });
 
@@ -407,11 +400,18 @@ export async function buildApp(options: AppOptions = {}) {
     if (!requireAdmin(request, reply, true)) return;
     const party = db.getActiveParty();
     if (!party) return reply.code(404).send({ error: "Keine aktive Party." });
-    const device = (await spotify.devices(true)).find((entry) => entry.id === request.body?.deviceId && !entry.isRestricted);
-    if (!device) return reply.code(400).send({ error: "Dieses Spotify-Gerät ist nicht steuerbar." });
+    const device = spotify.cachedDevice(String(request.body?.deviceId ?? ""));
+    if (!device) return reply.code(409).send({ error: "Bitte aktualisiere zuerst die Geräteliste." });
+    if (device.isRestricted) return reply.code(400).send({ error: "Dieses Spotify-Gerät ist nicht steuerbar." });
     await spotify.transfer(device.id);
     db.selectDevice(Number(party.id), device.id);
+    controller.wake(1_000);
     return reply.send({ ok: true });
+  });
+
+  app.post("/api/admin/devices/refresh", async (request, reply) => {
+    if (!requireAdmin(request, reply, true)) return;
+    return reply.send({ devices: await spotify.devices(true) });
   });
 
   app.delete<{ Params: { itemId: string } }>("/api/admin/queue/:itemId", async (request, reply) => {
@@ -427,30 +427,12 @@ export async function buildApp(options: AppOptions = {}) {
     }
   });
 
-  app.get<{ Querystring: { q?: string; offset?: string } }>("/api/admin/search", async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
-    return reply.send(await spotify.search(request.query.q ?? "", safeOffset(request.query.offset)));
-  });
-
-  app.post<{ Body: { trackId?: string } }>("/api/admin/player/play-now", async (request, reply) => {
-    if (!requireAdmin(request, reply, true)) return;
-    const party = db.getActiveParty();
-    const trackId = String((request.body as { trackId?: string })?.trackId ?? "");
-    const track = await spotify.track(trackId);
-    await spotify.playNow(track, party?.selected_device_id ? String(party.selected_device_id) : null);
-    if (party) {
-      const queued = db.pendingByTrack(Number(party.id), track.id);
-      if (queued) db.transition(queued.queueId, ["pending"], "playing");
-      events.publish(Number(party.id));
-    }
-    return reply.send({ ok: true });
-  });
-
   for (const action of ["pause", "resume", "next"] as const) {
     app.post(`/api/admin/player/${action}`, async (request, reply) => {
       if (!requireAdmin(request, reply, true)) return;
       const party = db.getActiveParty();
       await spotify.control(action, party?.selected_device_id ? String(party.selected_device_id) : null);
+      if (party) controller.wake(1_000);
       return reply.send({ ok: true });
     });
   }

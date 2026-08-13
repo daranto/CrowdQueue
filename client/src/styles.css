@@ -171,8 +171,8 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .qr-export-trigger { border-color: #7d8d45; color: var(--lime); }
 .control-buttons { display: grid; grid-template-columns: repeat(3,1fr); gap: .5rem; margin: 1rem 0; }
 .control-buttons button { min-height: 48px; border: 1px solid #5d6056; background: #242520; border-radius: .45rem; }
+.device-refresh { width: 100%; margin-top: -.35rem; }
 .controls .danger-button { margin-top: 1.2rem; width: 100%; }
-.admin-search .search-field { max-width: 620px; }
 .admin-queue .queue-row { grid-template-columns: 26px auto minmax(0,1fr) auto; }
 
 .api-statistics { overflow: hidden; }

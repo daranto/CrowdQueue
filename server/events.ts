@@ -20,6 +20,10 @@ export class PartyEvents {
     }
   }
 
+  listenerCount(partyId: number): number {
+    return this.listeners.get(partyId)?.size ?? 0;
+  }
+
   heartbeat(): void {
     for (const listeners of this.listeners.values()) {
       for (const response of listeners) response.write(": keepalive\n\n");

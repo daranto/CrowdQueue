@@ -103,6 +103,11 @@ test("Adminfluss ist auf mobilen Viewports vollständig erreichbar", async ({ pa
   await page.goto("/admin");
   await expect(page.getByRole("heading", { name: "Admin" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Wiedergabe" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Song sofort spielen" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Geräteliste aktualisieren" })).toBeVisible();
+  await expect(page.getByRole("option", { name: /Party iPhone/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Geräteliste aktualisieren" }).click();
+  await expect(page.getByRole("option", { name: /Party iPhone/ })).toBeAttached();
   await expect(page.getByRole("button", { name: "Party beenden" })).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   expect(overflow).toBe(false);

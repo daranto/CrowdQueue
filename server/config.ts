@@ -70,9 +70,6 @@ export const config = {
   trustProxy: proxyTrust(env("TRUST_PROXY", "false")),
   demoMode: validateDemoMode(env("DEMO_MODE", "false") === "true", nodeEnv),
   guestSpotifyRequestsPerMinute: Math.max(1, Number(env("GUEST_SPOTIFY_REQUESTS_PER_MINUTE", "20")) || 20),
-  // Spotify zählt alle Web-API-Aufrufe in ein gemeinsames Kontingent. Zehn
-  // Sekunden reichen für das 30-Sekunden-Lockfenster und vermeiden unnötiges Polling.
-  controllerIntervalMs: Math.max(10000, Number(env("CONTROLLER_INTERVAL_MS", "10000")) || 10000),
   lockBeforeEndMs: Number(env("LOCK_BEFORE_END_MS", "30000")),
   metadataRetentionDays: 7,
 };

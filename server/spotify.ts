@@ -35,7 +35,7 @@ const RATE_LIMIT_REASON_KEY = "spotify_rate_limit_reason";
 const RATE_LIMIT_ATTEMPTS_KEY = "spotify_rate_limit_attempts";
 const SEARCH_CACHE_MS = 2 * 60_000;
 const TRACK_CACHE_MS = 10 * 60_000;
-const DEVICE_CACHE_MS = 60_000;
+const DEVICE_CACHE_MS = 5 * 60_000;
 const QUEUE_CACHE_MS = 30_000;
 const SPOTIFY_REQUEST_CONCURRENCY = 2;
 const GUEST_BUDGET_WINDOW_MS = 60_000;
@@ -100,6 +100,7 @@ export class SpotifyClient {
   private activeWebApiRequests = 0;
   private tokenRefreshInFlight: Promise<string> | null = null;
   private demoProgress = 30000;
+  private demoLastUpdateAt = Date.now();
 
   constructor(
     private readonly db: AppDatabase,
@@ -460,9 +461,21 @@ export class SpotifyClient {
     return devices;
   }
 
-  async player(): Promise<PlayerSnapshot> {
+  cachedDevice(id: string): SpotifyDevice | null {
     if (config.demoMode) {
-      this.demoProgress = (this.demoProgress + config.controllerIntervalMs) % DEMO_TRACKS[0].durationMs;
+      return id === "demo-iphone"
+        ? { id: "demo-iphone", name: "Party iPhone", type: "Smartphone", isActive: true, isRestricted: false }
+        : null;
+    }
+    if (!this.deviceCache || this.deviceCache.expires <= Date.now()) return null;
+    return this.deviceCache.devices.find((device) => device.id === id) ?? null;
+  }
+
+  async player(refreshNativeQueue = true): Promise<PlayerSnapshot> {
+    if (config.demoMode) {
+      const now = Date.now();
+      this.demoProgress = (this.demoProgress + Math.max(0, now - this.demoLastUpdateAt)) % DEMO_TRACKS[0].durationMs;
+      this.demoLastUpdateAt = now;
       return {
         isPlaying: true,
         progressMs: this.demoProgress,
@@ -481,7 +494,9 @@ export class SpotifyClient {
     }
     const state = await stateResponse.json() as any;
     let nativeQueue: Track[];
-    if (this.nativeQueueCache && this.nativeQueueCache.expires > Date.now()) {
+    if (!refreshNativeQueue) {
+      nativeQueue = this.nativeQueueCache?.tracks ?? [];
+    } else if (this.nativeQueueCache && this.nativeQueueCache.expires > Date.now()) {
       nativeQueue = this.nativeQueueCache.tracks;
     } else {
       const queueResponse = await this.request("/me/player/queue", {}, "controller");
@@ -507,19 +522,10 @@ export class SpotifyClient {
     const query = new URLSearchParams({ uri: track.uri });
     if (deviceId) query.set("device_id", deviceId);
     await this.request(`/me/player/queue?${query}`, { method: "POST" }, "controller");
-    if (this.nativeQueueCache) {
-      this.nativeQueueCache = {
-        expires: Date.now() + QUEUE_CACHE_MS,
-        tracks: [...this.nativeQueueCache.tracks, track].slice(0, 20),
-      };
-    }
-  }
-
-  async playNow(track: Track, deviceId: string | null): Promise<void> {
-    if (config.demoMode) return;
-    const query = deviceId ? `?device_id=${encodeURIComponent(deviceId)}` : "";
-    await this.request(`/me/player/play${query}`, { method: "PUT", body: JSON.stringify({ uris: [track.uri] }) });
-    this.nativeQueueCache = null;
+    this.nativeQueueCache = {
+      expires: Date.now() + QUEUE_CACHE_MS,
+      tracks: [...(this.nativeQueueCache?.tracks ?? []), track].slice(0, 20),
+    };
   }
 
   async control(action: "pause" | "resume" | "next", deviceId: string | null): Promise<void> {

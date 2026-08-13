@@ -40,6 +40,30 @@ describe("HTTP API", () => {
     assert.equal((await app.inject({ url: "/api/admin/statistics?range=year", headers: { "x-demo-admin": "true" } })).statusCode, 400);
   });
 
+  it("lädt Spotify-Geräte ausschließlich nach einem manuellen Admin-Klick", async () => {
+    const app = await buildApp({ databasePath: ":memory:", logger: false });
+    apps.push(app);
+    let deviceRequests = 0;
+    app.spotify.devices = async () => {
+      deviceRequests += 1;
+      return [{ id: "manual-device", name: "Manuelles Gerät", type: "Speaker", isActive: true, isRestricted: false }];
+    };
+
+    const state = await app.inject({ url: "/api/admin/state", headers: { "x-demo-admin": "true" } });
+    assert.equal(state.statusCode, 200);
+    assert.equal(state.json().devices, undefined);
+    assert.equal(deviceRequests, 0, "die Admin-Konsole darf Spotify nicht automatisch nach Geräten fragen");
+
+    const refreshed = await app.inject({
+      method: "POST",
+      url: "/api/admin/devices/refresh",
+      headers: { "x-demo-admin": "true", "x-csrf-token": "demo-csrf" },
+    });
+    assert.equal(refreshed.statusCode, 200);
+    assert.equal(refreshed.json().devices[0].name, "Manuelles Gerät");
+    assert.equal(deviceRequests, 1);
+  });
+
   it("erstellt eine Party, verhindert Eigenvotes und zählt den Doppelwunsch eines anderen Gasts", async () => {
     const app = await buildApp({ databasePath: ":memory:", logger: false });
     apps.push(app);
@@ -80,32 +104,30 @@ describe("HTTP API", () => {
     assert.equal(response.statusCode, 403);
   });
 
-  it("lässt ohne Admin-Sitzung keinen Spotify-Steuer- oder Suchaufruf durch", async () => {
+  it("lässt ohne Admin-Sitzung keinen Spotify-Steueraufruf durch", async () => {
     const app = await buildApp({ databasePath: ":memory:", logger: false });
     apps.push(app);
     let spotifyCalls = 0;
-    app.spotify.search = async () => {
-      spotifyCalls += 1;
-      return { items: [], total: 0, nextOffset: null };
-    };
     app.spotify.control = async () => { spotifyCalls += 1; };
-    app.spotify.track = async () => {
-      spotifyCalls += 1;
-      throw new Error("darf nicht erreicht werden");
-    };
     app.spotify.devices = async () => {
       spotifyCalls += 1;
       return [];
     };
 
     const responses = await Promise.all([
-      app.inject({ url: "/api/admin/search?q=test" }),
       app.inject({ method: "POST", url: "/api/admin/player/pause" }),
-      app.inject({ method: "POST", url: "/api/admin/player/play-now", payload: { trackId: "track" } }),
       app.inject({ method: "PUT", url: "/api/admin/parties/active/device", payload: { deviceId: "device" } }),
+      app.inject({ method: "POST", url: "/api/admin/devices/refresh" }),
     ]);
-    assert.deepEqual(responses.map((response) => response.statusCode), [401, 401, 401, 401]);
+    assert.deepEqual(responses.map((response) => response.statusCode), [401, 401, 401]);
     assert.equal(spotifyCalls, 0);
+  });
+
+  it("stellt die entfernte Admin-Suche und Sofortwiedergabe nicht mehr bereit", async () => {
+    const app = await buildApp({ databasePath: ":memory:", logger: false });
+    apps.push(app);
+    assert.equal((await app.inject({ url: "/api/admin/search?q=test", headers: { "x-demo-admin": "true" } })).statusCode, 404);
+    assert.equal((await app.inject({ method: "POST", url: "/api/admin/player/play-now", headers: { "x-demo-admin": "true", "x-csrf-token": "demo-csrf" }, payload: { trackId: "demo-1" } })).statusCode, 404);
   });
 
   it("verlangt das Setup-Token nur vor dem ersten hinterlegten Besitzer", async () => {
@@ -158,7 +180,7 @@ describe("HTTP API", () => {
     assert.equal(response.json().reason, "QUOTA_EXCEEDED");
   });
 
-  it("reicht den laut Spotify-Spezifikation erlaubten Such-Offset 1000 weiter", async () => {
+  it("reicht bei der Gastsuche den laut Spotify-Spezifikation erlaubten Offset 1000 weiter", async () => {
     const app = await buildApp({ databasePath: ":memory:", logger: false });
     apps.push(app);
     let receivedOffset = -1;
@@ -167,10 +189,13 @@ describe("HTTP API", () => {
       return { items: [], total: 0, nextOffset: null };
     };
 
-    const response = await app.inject({
-      url: "/api/admin/search?q=test&offset=1000",
-      headers: { "x-demo-admin": "true" },
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/admin/parties",
+      headers: { "x-demo-admin": "true", "x-csrf-token": "demo-csrf" },
+      payload: { name: "Suchparty", origin: "public" },
     });
+    const response = await app.inject({ url: `/api/parties/${created.json().state.party.code}/search?q=test&offset=1000` });
     assert.equal(response.statusCode, 200);
     assert.equal(receivedOffset, 1000);
   });

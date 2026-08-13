@@ -12,6 +12,7 @@ export function GuestApp({ code }: { code: string }) {
   const [requestFeedback, setRequestFeedback] = useState<{ tone: "error" | "success"; text: string } | null>(null);
   const [query, setQuery] = useState("");
   const [busyId, setBusyId] = useState<string | number | null>(null);
+  const [progressClock, setProgressClock] = useState(() => Date.now());
   const rateLimited = state?.spotifyRateLimit.limited ?? false;
   const search = useSearch(`/api/parties/${code}/search`, rateLimited ? "" : query);
 
@@ -118,6 +119,13 @@ export function GuestApp({ code }: { code: string }) {
     };
   }, [code, load]);
 
+  useEffect(() => {
+    setProgressClock(Date.now());
+    if (!state?.player.isPlaying || !state.nowPlaying) return;
+    const timer = window.setInterval(() => setProgressClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [state?.nowPlaying, state?.player.isPlaying]);
+
   async function requestTrack(track: Track) {
     setBusyId(track.id);
     setRequestFeedback(null);
@@ -155,10 +163,13 @@ export function GuestApp({ code }: { code: string }) {
     }
   }
 
-  const progress = useMemo(() => {
+  const estimatedProgressMs = useMemo(() => {
     if (!state?.nowPlaying?.durationMs) return 0;
-    return Math.min(100, (state.player.progressMs / state.nowPlaying.durationMs) * 100);
-  }, [state]);
+    const measuredAt = Date.parse(state.player.updatedAt);
+    const elapsed = state.player.isPlaying && Number.isFinite(measuredAt) ? Math.max(0, progressClock - measuredAt) : 0;
+    return Math.min(state.nowPlaying.durationMs, state.player.progressMs + elapsed);
+  }, [progressClock, state]);
+  const progress = state?.nowPlaying?.durationMs ? Math.min(100, estimatedProgressMs / state.nowPlaying.durationMs * 100) : 0;
 
   const remainingRequests = Math.max(0, (state?.limits.maxOpenRequests ?? 3) - (state?.limits.ownOpenRequests ?? 0));
   const requestedTrackIds = useMemo(() => {
@@ -192,10 +203,10 @@ export function GuestApp({ code }: { code: string }) {
               <a href={state.nowPlaying.spotifyUrl} target="_blank" rel="noreferrer"><Artwork track={state.nowPlaying} size="hero" /></a>
               <div className="now-playing__content">
                 <TrackMeta track={state.nowPlaying} />
-                <div className="progress" role="progressbar" aria-label="Fortschritt des laufenden Songs" aria-valuemin={0} aria-valuemax={state.nowPlaying.durationMs} aria-valuenow={state.player.progressMs}>
+                <div className="progress" role="progressbar" aria-label="Fortschritt des laufenden Songs" aria-valuemin={0} aria-valuemax={state.nowPlaying.durationMs} aria-valuenow={estimatedProgressMs}>
                   <span style={{ width: `${progress}%` }} />
                 </div>
-                <div className="progress-label"><span>{formatTime(state.player.progressMs)}</span><span>−{formatTime(state.nowPlaying.durationMs - state.player.progressMs)}</span></div>
+                <div className="progress-label"><span>{formatTime(estimatedProgressMs)}</span><span>−{formatTime(state.nowPlaying.durationMs - estimatedProgressMs)}</span></div>
                 <div className="device-label"><span aria-hidden="true">◉</span>{state.player.deviceName ?? "Kein aktives Gerät"}</div>
                 <SpotifyLink href={state.nowPlaying.spotifyUrl} />
               </div>

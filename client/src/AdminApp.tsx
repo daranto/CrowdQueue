@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, api } from "./api";
-import { Brand, EmptyState, Loading, Notice, QueueRow, SearchResult, SpotifyLimitNotice } from "./components";
+import { Brand, EmptyState, Loading, Notice, QueueRow, SpotifyLimitNotice } from "./components";
 import { QrExportDialog } from "./QrExportDialog";
 import { StatisticsPanel } from "./StatisticsPanel";
-import type { AdminState, ApiStatistics, StatisticsRange, Track } from "./types";
-import { useSearch } from "./useSearch";
+import type { AdminState, ApiStatistics, StatisticsRange } from "./types";
 
 export function AdminApp() {
   const [state, setState] = useState<AdminState | null>(null);
@@ -14,7 +13,6 @@ export function AdminApp() {
   const [name, setName] = useState("");
   const [origin, setOrigin] = useState<"public" | "lan">("lan");
   const [setupToken, setSetupToken] = useState("");
-  const [query, setQuery] = useState("");
   const [busy, setBusy] = useState<string | number | null>(null);
   const [qrExportOpen, setQrExportOpen] = useState(false);
   const [statistics, setStatistics] = useState<ApiStatistics | null>(null);
@@ -24,7 +22,6 @@ export function AdminApp() {
   const rateLimited = state?.spotifyRateLimit?.limited ?? false;
   const spotifyConnected = state?.spotify?.connected ?? state?.connected ?? false;
   const spotifyUnavailable = rateLimited || !spotifyConnected;
-  const search = useSearch("/api/admin/search", state?.authenticated && !spotifyUnavailable ? query : "");
   const demoMode = state?.demoMode ?? false;
   const authenticated = state?.authenticated ?? false;
   const oauthError = new URLSearchParams(window.location.search).get("error");
@@ -36,7 +33,10 @@ export function AdminApp() {
 
   const load = useCallback(async () => {
     try {
-      setState(await api<AdminState>("/api/admin/state", demoMode ? { headers: { "x-demo-admin": "true" } } : undefined));
+      const next = await api<AdminState>("/api/admin/state", demoMode ? { headers: { "x-demo-admin": "true" } } : undefined);
+      setState((previous) => next.authenticated && previous?.authenticated
+        ? { ...next, devices: previous.devices }
+        : next);
       setError(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Adminbereich konnte nicht geladen werden.");
@@ -73,9 +73,6 @@ export function AdminApp() {
     }, 30000);
     return () => window.clearInterval(timer);
   }, [load]);
-  useEffect(() => {
-    if (search.errorStatus === 429) void load();
-  }, [load, search.errorStatus]);
   useEffect(() => {
     if (!state?.party?.party.code) return;
     const events = new EventSource(`/api/parties/${state.party.party.code}/events`);
@@ -117,6 +114,22 @@ export function AdminApp() {
     setName("");
   }
 
+  async function refreshDevices() {
+    setBusy("refresh-devices");
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await api<{ devices: NonNullable<AdminState["devices"]> }>("/api/admin/devices/refresh", adminInit("POST"));
+      setState((current) => current ? { ...current, devices: result.devices } : current);
+      setMessage(result.devices.length ? "Geräteliste aktualisiert." : "Spotify hat aktuell keine Geräte gemeldet.");
+    } catch (caught) {
+      if (caught instanceof ApiError && (caught.status === 429 || caught.reason === "invalid_grant")) await load();
+      setError(caught instanceof Error ? caught.message : "Geräteliste konnte nicht aktualisiert werden.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function login() {
     setBusy("login");
     setError(null);
@@ -130,11 +143,6 @@ export function AdminApp() {
       setError(caught instanceof Error ? caught.message : "Spotify-Anmeldung konnte nicht gestartet werden.");
       setBusy(null);
     }
-  }
-
-  async function playNow(track: Track) {
-    await action(track.id, "/api/admin/player/play-now", "POST", { trackId: track.id }, `${track.name} wird jetzt abgespielt.`);
-    setQuery("");
   }
 
   if (loading) return <main id="main" className="shell"><Loading label="Adminbereich wird geladen …" /></main>;
@@ -206,18 +214,11 @@ export function AdminApp() {
               <div className="admin-card controls">
                 <span className="section-kicker">Spotify Connect</span><h2>Wiedergabe</h2>
                 <label><span>Zielgerät</span><select value={state.selectedDeviceId ?? ""} disabled={spotifyUnavailable} onChange={(event) => void action("device", "/api/admin/parties/active/device", "PUT", { deviceId: event.target.value }, "Zielgerät geändert.")}><option value="">Aktives Spotify-Gerät</option>{state.devices?.map((device) => <option key={device.id} value={device.id} disabled={device.isRestricted}>{device.name} · {device.type}{device.isRestricted ? " (gesperrt)" : ""}</option>)}</select></label>
+                <button className="secondary-button device-refresh" type="button" disabled={spotifyUnavailable || busy === "refresh-devices"} onClick={() => void refreshDevices()}>{busy === "refresh-devices" ? "Wird aktualisiert …" : "Geräteliste aktualisieren"}</button>
                 <div className="control-buttons"><button type="button" disabled={spotifyUnavailable} onClick={() => void action("pause", "/api/admin/player/pause")}>Pause</button><button type="button" disabled={spotifyUnavailable} onClick={() => void action("resume", "/api/admin/player/resume")}>Weiter</button><button type="button" disabled={spotifyUnavailable} onClick={() => void action("next", "/api/admin/player/next")}>Nächster</button></div>
                 {state.party.player.warning && !spotifyUnavailable && <Notice>{state.party.player.warning}</Notice>}
                 <button className="danger-button" type="button" onClick={() => window.confirm("Party wirklich beenden? Die Queue wird geschlossen.") && void action("end", "/api/admin/parties/active", "DELETE", undefined, "Party beendet.")} disabled={busy === "end"}>Party beenden</button>
               </div>
-            </section>
-
-            <section className="admin-card admin-search">
-              <span className="section-kicker">Direkte Wiedergabe</span><h2>Song sofort spielen</h2>
-              <label className="search-field"><span className="sr-only">Song oder Künstler suchen</span><span aria-hidden="true">⌕</span><input aria-label="Song oder Künstler suchen" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={!spotifyConnected ? "Spotify erneut verbinden" : rateLimited ? "Spotify-Suche pausiert" : "Song oder Künstler …"} disabled={spotifyUnavailable} /></label>
-              {search.error && <Notice tone="error">{search.error}</Notice>}
-              {search.loading && <Loading label="Spotify wird durchsucht …" />}
-              {search.items.length > 0 && <ul className="search-results">{search.items.map((track) => <SearchResult key={track.id} track={track} actionLabel="Sofort abspielen" onAction={() => void playNow(track)} busy={busy === track.id} />)}</ul>}
             </section>
 
             <section className="admin-card admin-queue">

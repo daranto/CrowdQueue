@@ -238,11 +238,15 @@ describe("Spotify Admin-Login", () => {
     const spotify = new SpotifyClient(db);
     await spotify.devices();
     await spotify.devices();
-    await spotify.player();
-    await spotify.player();
+    await spotify.player(false);
+    await spotify.player(false);
     assert.equal(deviceRequests, 1);
+    assert.equal(spotify.cachedDevice("iphone")?.name, "iPhone");
+    assert.equal(deviceRequests, 1, "die Auswahl aus dem Cache darf keinen zweiten Geräteabruf erzeugen");
     assert.equal(playerRequests, 2);
-    assert.equal(queueRequests, 1);
+    assert.equal(queueRequests, 0, "sparsame Player-Takte dürfen die native Queue nicht automatisch abrufen");
+    await spotify.player(true);
+    assert.equal(queueRequests, 1, "der Controller kann den gezielten Queue-Abgleich weiterhin anfordern");
     db.close();
   });
 
