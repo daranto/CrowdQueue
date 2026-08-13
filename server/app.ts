@@ -12,6 +12,7 @@ import { AppDatabase } from "./database.js";
 import { PartyEvents } from "./events.js";
 import { ipDigest, randomToken, sign, verify } from "./security.js";
 import { SpotifyClient, SpotifyError } from "./spotify.js";
+import type { SpotifyDevice } from "./types.js";
 
 const GUEST_COOKIE = "cq_device";
 const ADMIN_COOKIE = "cq_admin";
@@ -103,6 +104,24 @@ export async function buildApp(options: AppOptions = {}) {
     return payload;
   });
 
+  app.setErrorHandler((error, request, reply) => {
+    if (error instanceof SpotifyError) {
+      const limit = spotify.rateLimitInfo();
+      const retryAfter = error.status === 429 ? Math.max(1, limit.retryAfter || error.retryAfter || 60) : null;
+      if (retryAfter) reply.header("Retry-After", String(retryAfter));
+      return reply.code(error.status).send({
+        error: error.message,
+        retryAfter,
+        reason: error.reason ?? limit.reason,
+        until: limit.until,
+      });
+    }
+    const candidate = (error as Error & { statusCode?: number }).statusCode;
+    const statusCode = Number.isInteger(candidate) && candidate! >= 400 && candidate! <= 599 ? candidate! : 500;
+    if (statusCode >= 500) request.log.error(error);
+    return reply.code(statusCode).send({ error: statusCode >= 500 ? "Interner Serverfehler." : error instanceof Error ? error.message : "Anfrage fehlgeschlagen." });
+  });
+
   function activeAdmin(request: FastifyRequest): { csrf: string } | null {
     if (config.demoMode && request.headers["x-demo-admin"] === "true") return { csrf: "demo-csrf" };
     const token = verify(request.cookies[ADMIN_COOKIE], "admin");
@@ -177,7 +196,14 @@ export async function buildApp(options: AppOptions = {}) {
 
   function safeOffset(value: string | undefined): number {
     const parsed = Number(value);
-    return Number.isFinite(parsed) ? Math.min(990, Math.max(0, Math.floor(parsed))) : 0;
+    return Number.isFinite(parsed) ? Math.min(1000, Math.max(0, Math.floor(parsed))) : 0;
+  }
+
+  function stateForParty(party: Record<string, unknown>, deviceId: string, includeSensitivePlayerData = false) {
+    return {
+      ...db.partyState(party, deviceId, includeSensitivePlayerData),
+      spotifyRateLimit: spotify.rateLimitInfo(),
+    };
   }
 
   app.get("/healthz", async (_request, reply) => {
@@ -188,7 +214,7 @@ export async function buildApp(options: AppOptions = {}) {
   app.get<{ Params: { code: string } }>("/api/parties/:code/state", { config: { rateLimit: { max: 120, timeWindow: "1 minute" } } }, async (request, reply) => {
     const party = partyForCode(request.params.code, request, reply);
     if (!party) return;
-    return reply.send(db.partyState(party, request.guestDeviceId));
+    return reply.send(stateForParty(party, request.guestDeviceId));
   });
 
   app.get<{ Params: { code: string } }>("/api/parties/:code/events", { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } }, async (request, reply) => {
@@ -228,6 +254,7 @@ export async function buildApp(options: AppOptions = {}) {
       events.publish(Number(party.id));
       return reply.code(result.added ? 201 : 200).send(result);
     } catch (error) {
+      if (error instanceof SpotifyError) throw error;
       return reply.code(409).send({ error: error instanceof Error ? error.message : "Musikwunsch konnte nicht hinzugefügt werden." });
     }
   });
@@ -252,14 +279,24 @@ export async function buildApp(options: AppOptions = {}) {
       configured: spotify.isConfigured(),
       connected: spotify.isConnected(),
       setupRequired: !db.getSetting("owner_account_id"),
+      spotifyRateLimit: spotify.rateLimitInfo(),
       demoMode: config.demoMode,
     });
-    const devices = await spotify.devices().catch(() => []);
-    const partyState = party ? db.partyState(party, "", true) : null;
+    let devices: SpotifyDevice[] = [];
+    if (spotify.isConnected()) {
+      try {
+        devices = await spotify.devices();
+      } catch (error) {
+        if (!(error instanceof SpotifyError)) throw error;
+      }
+    }
+    const partyState = party ? stateForParty(party, "", true) : null;
     return reply.send({
       authenticated: true,
+      configured: spotify.isConfigured(),
       csrfToken: session.csrf,
       spotify: spotify.connectionInfo(),
+      spotifyRateLimit: spotify.rateLimitInfo(),
       party: partyState,
       qrDataUrl: partyState ? await QRCode.toDataURL(partyState.party.guestUrl, { margin: 1, width: 320 }) : null,
       selectedDeviceId: party?.selected_device_id ?? null,
@@ -278,6 +315,7 @@ export async function buildApp(options: AppOptions = {}) {
       return reply.send({ url: "/admin" });
     }
     if (!spotify.isConfigured()) return reply.code(503).send({ error: "Spotify Client ID und Secret fehlen." });
+    spotify.ensureAvailable();
     db.sqlite.prepare("DELETE FROM oauth_states WHERE expires_at < ?").run(new Date().toISOString());
     const oauthStateCount = db.sqlite.prepare("SELECT COUNT(*) count FROM oauth_states").get() as { count: number };
     if (Number(oauthStateCount.count) >= 100) return reply.code(429).send({ error: "Zu viele offene Anmeldeversuche. Bitte später erneut versuchen." });
@@ -325,7 +363,7 @@ export async function buildApp(options: AppOptions = {}) {
     controller.start();
     void controller.tick();
     const guestUrl = `${guestOrigin}/p/${code}`;
-    return reply.code(201).send({ state: db.partyState(party, ""), qrDataUrl: await QRCode.toDataURL(guestUrl, { margin: 1, width: 320 }) });
+    return reply.code(201).send({ state: stateForParty(party, ""), qrDataUrl: await QRCode.toDataURL(guestUrl, { margin: 1, width: 320 }) });
   });
 
   app.delete("/api/admin/parties/active", async (request, reply) => {
@@ -341,7 +379,7 @@ export async function buildApp(options: AppOptions = {}) {
     if (!requireAdmin(request, reply, true)) return;
     const party = db.getActiveParty();
     if (!party) return reply.code(404).send({ error: "Keine aktive Party." });
-    const device = (await spotify.devices()).find((entry) => entry.id === request.body?.deviceId && !entry.isRestricted);
+    const device = (await spotify.devices(true)).find((entry) => entry.id === request.body?.deviceId && !entry.isRestricted);
     if (!device) return reply.code(400).send({ error: "Dieses Spotify-Gerät ist nicht steuerbar." });
     await spotify.transfer(device.id);
     db.selectDevice(Number(party.id), device.id);

@@ -51,11 +51,15 @@ test("Gast kann mobil suchen, wünschen und voten", async ({ page, request }) =>
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })));
   await resumedStateRequest;
   await expect(page.getByRole("region", { name: "Song finden" })).toBeVisible();
+  await expect(page.getByText("3 Wünsche frei")).toBeVisible();
   await page.getByRole("searchbox", { name: "Song oder Künstler suchen" }).fill("Dua");
   await expect(page.getByRole("button", { name: /Song wünschen: Dance The Night/ })).toBeVisible();
   await page.getByRole("button", { name: /Song wünschen: Dance The Night/ }).click();
   await expect(page.getByRole("region", { name: "Song finden" }).getByRole("status")).toContainText(/gewünscht|Stimme/);
   await expect(page.getByRole("searchbox", { name: "Song oder Künstler suchen" })).toHaveValue("Dua");
+  await expect(page.getByText("2 Wünsche frei")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Bereits gewünscht: Dance The Night" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Bereits gewünscht: Dance The Night" })).toContainText("Schon drin");
   await expect(page.getByRole("button", { name: /Song wünschen: Levitating/ })).toBeVisible();
   await expect(page.getByText(/Eigener Wunsch: Dance The Night/)).toBeAttached();
   await expect(page.getByRole("button", { name: /Dance The Night, aktuell/ })).toHaveCount(0);

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { buildApp } from "../server/app.js";
+import { SpotifyError } from "../server/spotify.js";
 
 const apps: Awaited<ReturnType<typeof buildApp>>[] = [];
 afterEach(async () => { while (apps.length) await apps.pop()!.close(); });
@@ -79,5 +80,44 @@ describe("HTTP API", () => {
     assert.equal(response.statusCode, 404);
     const devices = app.appDb.sqlite.prepare("SELECT COUNT(*) count FROM guest_devices").get() as { count: number };
     assert.equal(Number(devices.count), 0);
+  });
+
+  it("liefert Spotify-Sperren mit Retry-After an den Admin zurück", async () => {
+    const app = await buildApp({ databasePath: ":memory:", logger: false });
+    apps.push(app);
+    await app.inject({
+      method: "POST",
+      url: "/api/admin/parties",
+      headers: { "x-demo-admin": "true", "x-csrf-token": "demo-csrf" },
+      payload: { name: "Rate Limit Party", origin: "public" },
+    });
+    app.spotify.control = async () => {
+      throw new SpotifyError("Spotify wartet.", 429, 120, "QUOTA_EXCEEDED");
+    };
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/admin/player/pause",
+      headers: { "x-demo-admin": "true", "x-csrf-token": "demo-csrf" },
+    });
+    assert.equal(response.statusCode, 429);
+    assert.equal(response.headers["retry-after"], "120");
+    assert.equal(response.json().reason, "QUOTA_EXCEEDED");
+  });
+
+  it("reicht den laut Spotify-Spezifikation erlaubten Such-Offset 1000 weiter", async () => {
+    const app = await buildApp({ databasePath: ":memory:", logger: false });
+    apps.push(app);
+    let receivedOffset = -1;
+    app.spotify.search = async (_query, offset) => {
+      receivedOffset = offset;
+      return { items: [], total: 0, nextOffset: null };
+    };
+
+    const response = await app.inject({
+      url: "/api/admin/search?q=test&offset=1000",
+      headers: { "x-demo-admin": "true" },
+    });
+    assert.equal(response.statusCode, 200);
+    assert.equal(receivedOffset, 1000);
   });
 });

@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { formatTime } from "./api";
-import type { QueueItem, Track } from "./types";
+import type { QueueItem, SpotifyRateLimit, Track } from "./types";
 
 export function Brand({ compact = false }: { compact?: boolean }) {
   return (
@@ -37,7 +37,21 @@ export function TrackMeta({ track, compact = false }: { track: Track; compact?: 
   );
 }
 
-export function SearchResult({ track, actionLabel, onAction, busy }: { track: Track; actionLabel: string; onAction: () => void; busy: boolean }) {
+export function SearchResult({
+  track,
+  actionLabel,
+  onAction,
+  busy,
+  unavailable = false,
+  unavailableLabel = "Nicht verfügbar",
+}: {
+  track: Track;
+  actionLabel: string;
+  onAction: () => void;
+  busy: boolean;
+  unavailable?: boolean;
+  unavailableLabel?: string;
+}) {
   return (
     <li className="search-result">
       <a href={track.spotifyUrl} target="_blank" rel="noreferrer" aria-label={`${track.name} auf Spotify öffnen`}>
@@ -45,8 +59,16 @@ export function SearchResult({ track, actionLabel, onAction, busy }: { track: Tr
       </a>
       <TrackMeta track={track} compact />
       <span className="search-result__duration" aria-label={`Dauer ${formatTime(track.durationMs)}`}>{formatTime(track.durationMs)}</span>
-      <button className="icon-action" type="button" onClick={onAction} disabled={busy} aria-busy={busy} aria-label={`${actionLabel}: ${track.name}`}>
-        <span aria-hidden="true">{busy ? "…" : "＋"}</span>
+      <button
+        className={`icon-action ${unavailable ? "icon-action--unavailable" : ""}`}
+        type="button"
+        onClick={onAction}
+        disabled={busy || unavailable}
+        aria-busy={busy}
+        aria-label={`${unavailable ? unavailableLabel : actionLabel}: ${track.name}`}
+      >
+        <span aria-hidden="true">{busy ? "…" : unavailable ? "✓" : "＋"}</span>
+        {unavailable && <small aria-hidden="true">Schon drin</small>}
       </button>
     </li>
   );
@@ -83,6 +105,38 @@ export function QueueRow({ item, position, onVote, onRemove, busy }: { item: Que
 
 export function Notice({ children, tone = "info", live = false }: { children: ReactNode; tone?: "info" | "error" | "success"; live?: boolean }) {
   return <div className={`notice notice--${tone}`} role={tone === "error" ? "alert" : "status"} aria-live={live ? "polite" : undefined}>{children}</div>;
+}
+
+function formatWaitingTime(seconds: number): string {
+  const safe = Math.max(0, Math.ceil(seconds));
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  const rest = safe % 60;
+  if (hours > 0) return `${hours} Std. ${minutes} Min.`;
+  if (minutes > 0) return `${minutes} Min. ${rest} Sek.`;
+  return `${rest} Sek.`;
+}
+
+export function SpotifyLimitNotice({ limit }: { limit?: SpotifyRateLimit | null }) {
+  const [now, setNow] = useState(0);
+  const until = limit?.until ? Date.parse(limit.until) : 0;
+
+  useEffect(() => {
+    if (!limit?.limited || !Number.isFinite(until) || until <= Date.now()) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 10000);
+    return () => window.clearInterval(timer);
+  }, [limit?.limited, until]);
+
+  if (!limit?.limited || !Number.isFinite(until) || now === 0 || until <= now) return null;
+  const remaining = Math.max(1, Math.ceil((until - now) / 1000));
+  const resumesAt = new Date(until).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  return (
+    <Notice>
+      <strong>{limit.reason === "QUOTA_EXCEEDED" ? "Spotify-Kontingent ausgeschöpft." : "Spotify begrenzt gerade die Anfragen."}</strong>{" "}
+      Suche und Wiedergabesteuerung pausieren automatisch <span aria-hidden="true">noch {formatWaitingTime(remaining)}</span><span className="sr-only">bis {resumesAt} Uhr</span>. Wünsche und Votes in der bestehenden Party Queue funktionieren weiter.
+    </Notice>
+  );
 }
 
 export function Loading({ label = "Wird geladen …" }: { label?: string }) {

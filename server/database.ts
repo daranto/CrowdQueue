@@ -394,6 +394,7 @@ export class AppDatabase {
         updatedAt: player.updatedAt,
         warning: player.warning,
       },
+      spotifyRateLimit: { limited: false, retryAfter: 0, until: null, reason: null },
       limits: { maxOpenRequests: 3, ownOpenRequests: Number(own.count) },
     };
   }

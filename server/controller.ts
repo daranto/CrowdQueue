@@ -1,12 +1,11 @@
 import { config } from "./config.js";
 import { AppDatabase } from "./database.js";
 import { PartyEvents } from "./events.js";
-import { SpotifyClient, SpotifyError } from "./spotify.js";
+import { SpotifyClient } from "./spotify.js";
 
 export class QueueController {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
-  private backoffUntil = 0;
 
   constructor(
     private readonly db: AppDatabase,
@@ -27,7 +26,7 @@ export class QueueController {
   }
 
   async tick(): Promise<void> {
-    if (this.running || Date.now() < this.backoffUntil || !this.spotify.isConnected()) return;
+    if (this.running || !this.spotify.isConnected() || this.spotify.rateLimitInfo().limited) return;
     const party = this.db.getActiveParty();
     if (!party) return;
     this.running = true;
@@ -72,9 +71,6 @@ export class QueueController {
       const previous = this.db.getPlayerState(partyId);
       const message = error instanceof Error ? error.message : "Spotify ist momentan nicht erreichbar.";
       this.db.savePlayerState(partyId, { ...previous, warning: message, updatedAt: new Date().toISOString() });
-      if (error instanceof SpotifyError && error.status === 429) {
-        this.backoffUntil = Date.now() + Math.max(1, error.retryAfter ?? 5) * 1000;
-      }
       this.events.publish(partyId);
     } finally {
       this.running = false;

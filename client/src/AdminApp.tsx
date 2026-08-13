@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { api } from "./api";
-import { Brand, EmptyState, Loading, Notice, QueueRow, SearchResult } from "./components";
+import { ApiError, api } from "./api";
+import { Brand, EmptyState, Loading, Notice, QueueRow, SearchResult, SpotifyLimitNotice } from "./components";
 import { QrExportDialog } from "./QrExportDialog";
 import type { AdminState, Track } from "./types";
 import { useSearch } from "./useSearch";
@@ -16,7 +16,10 @@ export function AdminApp() {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState<string | number | null>(null);
   const [qrExportOpen, setQrExportOpen] = useState(false);
-  const search = useSearch("/api/admin/search", state?.authenticated ? query : "");
+  const rateLimited = state?.spotifyRateLimit?.limited ?? false;
+  const spotifyConnected = state?.spotify?.connected ?? state?.connected ?? false;
+  const spotifyUnavailable = rateLimited || !spotifyConnected;
+  const search = useSearch("/api/admin/search", state?.authenticated && !spotifyUnavailable ? query : "");
   const demoMode = state?.demoMode ?? false;
   const oauthError = new URLSearchParams(window.location.search).get("error");
   const oauthErrorMessage = oauthError === "falsches_konto"
@@ -37,6 +40,15 @@ export function AdminApp() {
   }, [demoMode]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible" && navigator.onLine) void load();
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, [load]);
+  useEffect(() => {
+    if (search.errorStatus === 429) void load();
+  }, [load, search.errorStatus]);
   useEffect(() => {
     if (!state?.party?.party.code) return;
     const events = new EventSource(`/api/parties/${state.party.party.code}/events`);
@@ -65,6 +77,7 @@ export function AdminApp() {
       if (success) setMessage(success);
       await load();
     } catch (caught) {
+      if (caught instanceof ApiError && (caught.status === 429 || caught.reason === "invalid_grant")) await load();
       setError(caught instanceof Error ? caught.message : "Aktion fehlgeschlagen.");
     } finally {
       setBusy(null);
@@ -112,8 +125,9 @@ export function AdminApp() {
             : "Melde dich mit dem bereits hinterlegten Spotify-Admin-Konto an."}</p>
           {!state?.configured && <Notice tone="error">In der Serverkonfiguration fehlen Spotify Client ID oder Client Secret.</Notice>}
           {(error || oauthErrorMessage) && <Notice tone="error">{error ?? oauthErrorMessage}</Notice>}
+          <SpotifyLimitNotice limit={state?.spotifyRateLimit} />
           {setupRequired && <label><span>Einmaliges Setup-Token</span><input type="password" value={setupToken} onChange={(event) => setSetupToken(event.target.value)} autoComplete="one-time-code" /></label>}
-          <button className="primary-button" type="button" onClick={() => void login()} disabled={!state?.configured || busy === "login" || Boolean(setupRequired && !setupToken)}>{busy === "login" ? "Anmeldung wird gestartet …" : setupRequired ? "Mit Spotify verbinden" : "Mit Spotify anmelden"}</button>
+          <button className="primary-button" type="button" onClick={() => void login()} disabled={!state?.configured || rateLimited || busy === "login" || Boolean(setupRequired && !setupToken)}>{busy === "login" ? "Anmeldung wird gestartet …" : setupRequired ? "Mit Spotify verbinden" : "Mit Spotify anmelden"}</button>
           <p className="fine-print">{setupRequired
             ? "Das Setup-Token wird nur beim allerersten Verbinden benötigt. Danach bleibt ausschließlich dieses Spotify-Konto als Besitzer hinterlegt."
             : "Nur das ursprünglich eingerichtete Spotify-Konto erhält Zugriff auf die Admin-Konsole."}</p>
@@ -124,11 +138,13 @@ export function AdminApp() {
 
   return (
     <div className="admin-page">
-      <header className="topbar"><Brand /><div className="admin-user"><span>{state.spotify?.displayName}</span><button type="button" className="text-link" onClick={() => void action("logout", "/api/admin/logout", "POST")}>Abmelden</button></div></header>
+      <header className="topbar"><Brand /><div className="admin-user"><span>{state.spotify?.displayName ?? "Admin"}</span><button type="button" className="text-link" onClick={() => void action("logout", "/api/admin/logout", "POST")}>Abmelden</button></div></header>
       <main id="main" className="admin-shell">
-        <div className="admin-heading"><div><span className="section-kicker">Party-Zentrale</span><h1>Admin</h1></div><span className="admin-status"><i /> Spotify verbunden</span></div>
+        <div className="admin-heading"><div><span className="section-kicker">Party-Zentrale</span><h1>Admin</h1></div><span className={`admin-status${spotifyConnected ? "" : " admin-status--off"}`}><i /> {spotifyConnected ? "Spotify verbunden" : "Spotify getrennt"}</span></div>
         {error && <Notice tone="error" live>{error}</Notice>}
         {message && <Notice tone="success" live>{message}</Notice>}
+        <SpotifyLimitNotice limit={state.spotifyRateLimit} />
+        {!spotifyConnected && <Notice tone="error"><strong>Die Spotify-Verbindung ist abgelaufen.</strong> Verbinde das hinterlegte Besitzerkonto erneut. Das einmalige Setup-Token wird dafür nicht benötigt. <button className="inline-button" type="button" onClick={() => void login()} disabled={!state.configured || rateLimited || busy === "login"}>{busy === "login" ? "Verbindung wird gestartet …" : "Spotify erneut verbinden"}</button></Notice>}
         {state.spotify?.expiringSoon && <Notice>Die Spotify-Verbindung läuft bald ab. Bitte verbinde das Konto vorsorglich neu.</Notice>}
 
         {!state.party ? (
@@ -153,16 +169,16 @@ export function AdminApp() {
               </div>
               <div className="admin-card controls">
                 <span className="section-kicker">Spotify Connect</span><h2>Wiedergabe</h2>
-                <label><span>Zielgerät</span><select value={state.selectedDeviceId ?? ""} onChange={(event) => void action("device", "/api/admin/parties/active/device", "PUT", { deviceId: event.target.value }, "Zielgerät geändert.")}><option value="">Aktives Spotify-Gerät</option>{state.devices?.map((device) => <option key={device.id} value={device.id} disabled={device.isRestricted}>{device.name} · {device.type}{device.isRestricted ? " (gesperrt)" : ""}</option>)}</select></label>
-                <div className="control-buttons"><button type="button" onClick={() => void action("pause", "/api/admin/player/pause")}>Pause</button><button type="button" onClick={() => void action("resume", "/api/admin/player/resume")}>Weiter</button><button type="button" onClick={() => void action("next", "/api/admin/player/next")}>Nächster</button></div>
-                {state.party.player.warning && <Notice>{state.party.player.warning}</Notice>}
+                <label><span>Zielgerät</span><select value={state.selectedDeviceId ?? ""} disabled={spotifyUnavailable} onChange={(event) => void action("device", "/api/admin/parties/active/device", "PUT", { deviceId: event.target.value }, "Zielgerät geändert.")}><option value="">Aktives Spotify-Gerät</option>{state.devices?.map((device) => <option key={device.id} value={device.id} disabled={device.isRestricted}>{device.name} · {device.type}{device.isRestricted ? " (gesperrt)" : ""}</option>)}</select></label>
+                <div className="control-buttons"><button type="button" disabled={spotifyUnavailable} onClick={() => void action("pause", "/api/admin/player/pause")}>Pause</button><button type="button" disabled={spotifyUnavailable} onClick={() => void action("resume", "/api/admin/player/resume")}>Weiter</button><button type="button" disabled={spotifyUnavailable} onClick={() => void action("next", "/api/admin/player/next")}>Nächster</button></div>
+                {state.party.player.warning && !spotifyUnavailable && <Notice>{state.party.player.warning}</Notice>}
                 <button className="danger-button" type="button" onClick={() => window.confirm("Party wirklich beenden? Die Queue wird geschlossen.") && void action("end", "/api/admin/parties/active", "DELETE", undefined, "Party beendet.")} disabled={busy === "end"}>Party beenden</button>
               </div>
             </section>
 
             <section className="admin-card admin-search">
               <span className="section-kicker">Direkte Wiedergabe</span><h2>Song sofort spielen</h2>
-              <label className="search-field"><span className="sr-only">Song oder Künstler suchen</span><span aria-hidden="true">⌕</span><input aria-label="Song oder Künstler suchen" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Song oder Künstler …" /></label>
+              <label className="search-field"><span className="sr-only">Song oder Künstler suchen</span><span aria-hidden="true">⌕</span><input aria-label="Song oder Künstler suchen" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={!spotifyConnected ? "Spotify erneut verbinden" : rateLimited ? "Spotify-Suche pausiert" : "Song oder Künstler …"} disabled={spotifyUnavailable} /></label>
               {search.error && <Notice tone="error">{search.error}</Notice>}
               {search.loading && <Loading label="Spotify wird durchsucht …" />}
               {search.items.length > 0 && <ul className="search-results">{search.items.map((track) => <SearchResult key={track.id} track={track} actionLabel="Sofort abspielen" onAction={() => void playNow(track)} busy={busy === track.id} />)}</ul>}

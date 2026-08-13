@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, formatTime } from "./api";
-import { Artwork, Brand, EmptyState, Loading, Notice, QueueRow, SearchResult, SpotifyLink, TrackMeta } from "./components";
+import { ApiError, api, formatTime } from "./api";
+import { Artwork, Brand, EmptyState, Loading, Notice, QueueRow, SearchResult, SpotifyLimitNotice, SpotifyLink, TrackMeta } from "./components";
 import type { PartyState, Track } from "./types";
 import { useSearch } from "./useSearch";
 
@@ -12,7 +12,8 @@ export function GuestApp({ code }: { code: string }) {
   const [requestFeedback, setRequestFeedback] = useState<{ tone: "error" | "success"; text: string } | null>(null);
   const [query, setQuery] = useState("");
   const [busyId, setBusyId] = useState<string | number | null>(null);
-  const search = useSearch(`/api/parties/${code}/search`, query);
+  const rateLimited = state?.spotifyRateLimit.limited ?? false;
+  const search = useSearch(`/api/parties/${code}/search`, rateLimited ? "" : query);
 
   const load = useCallback(async (announce = false) => {
     try {
@@ -28,6 +29,15 @@ export function GuestApp({ code }: { code: string }) {
   }, [code]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible" && navigator.onLine) void load();
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, [load]);
+  useEffect(() => {
+    if (search.errorStatus === 429) void load();
+  }, [load, search.errorStatus]);
 
   useEffect(() => {
     let events: EventSource | null = null;
@@ -127,6 +137,7 @@ export function GuestApp({ code }: { code: string }) {
         tone: "error",
         text: caught instanceof Error ? caught.message : "Musikwunsch fehlgeschlagen.",
       });
+      if (caught instanceof ApiError && caught.status === 429) await load();
     } finally {
       setBusyId(null);
     }
@@ -149,6 +160,13 @@ export function GuestApp({ code }: { code: string }) {
     return Math.min(100, (state.player.progressMs / state.nowPlaying.durationMs) * 100);
   }, [state]);
 
+  const remainingRequests = Math.max(0, (state?.limits.maxOpenRequests ?? 3) - (state?.limits.ownOpenRequests ?? 0));
+  const requestedTrackIds = useMemo(() => {
+    const ids = new Set(state?.queue.map((item) => item.id) ?? []);
+    if (state?.lockedNext) ids.add(state.lockedNext.id);
+    return ids;
+  }, [state]);
+
   if (loading) return <main id="main" className="shell"><Loading label="Party wird geladen …" /></main>;
 
   return (
@@ -163,7 +181,8 @@ export function GuestApp({ code }: { code: string }) {
           <h1>{state?.party.name ?? "Party"}</h1>
         </div>
 
-        {state?.player.warning && <Notice>{state.player.warning}</Notice>}
+        <SpotifyLimitNotice limit={state?.spotifyRateLimit} />
+        {state?.player.warning && !rateLimited && <Notice>{state.player.warning}</Notice>}
         {message && <Notice tone="success" live>{message}</Notice>}
 
         <section className="now-playing" aria-labelledby="now-title">
@@ -195,11 +214,11 @@ export function GuestApp({ code }: { code: string }) {
         )}
 
         <section className="search-panel" aria-labelledby="search-title">
-          <div className="section-title-row"><div><span className="section-kicker">Dein Musikwunsch</span><h2 id="search-title">Song finden</h2></div><span>{state?.limits.ownOpenRequests ?? 0}/{state?.limits.maxOpenRequests ?? 3} offen</span></div>
+          <div className="section-title-row"><div><span className="section-kicker">Dein Musikwunsch</span><h2 id="search-title">Song finden</h2></div><span>{remainingRequests === 0 ? "Kein Wunsch mehr frei" : `${remainingRequests} ${remainingRequests === 1 ? "Wunsch" : "Wünsche"} frei`}</span></div>
           <label className="search-field">
             <span className="sr-only">Song oder Künstler suchen</span>
             <span aria-hidden="true">⌕</span>
-            <input aria-label="Song oder Künstler suchen" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Song oder Künstler …" disabled={!state?.party.active} autoComplete="off" />
+            <input aria-label="Song oder Künstler suchen" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={rateLimited ? "Spotify-Suche pausiert" : "Song oder Künstler …"} disabled={!state?.party.active || rateLimited} autoComplete="off" />
             {query && <button type="button" onClick={() => setQuery("")} aria-label="Suche leeren">×</button>}
           </label>
           {requestFeedback && <Notice tone={requestFeedback.tone} live>{requestFeedback.text}</Notice>}
@@ -208,7 +227,17 @@ export function GuestApp({ code }: { code: string }) {
           {query.trim().length >= 2 && !search.loading && search.items.length === 0 && !search.error && <EmptyState title="Kein Treffer">Versuche einen anderen Songtitel oder Künstlernamen.</EmptyState>}
           {search.items.length > 0 && (
             <ul className="search-results" aria-label="Spotify Suchergebnisse">
-              {search.items.map((track) => <SearchResult key={track.id} track={track} actionLabel="Song wünschen" onAction={() => void requestTrack(track)} busy={busyId === track.id} />)}
+              {search.items.map((track) => (
+                <SearchResult
+                  key={track.id}
+                  track={track}
+                  actionLabel="Song wünschen"
+                  onAction={() => void requestTrack(track)}
+                  busy={busyId === track.id}
+                  unavailable={requestedTrackIds.has(track.id)}
+                  unavailableLabel="Bereits gewünscht"
+                />
+              ))}
             </ul>
           )}
           {search.nextOffset !== null && <button className="secondary-button" type="button" onClick={() => void search.more()} disabled={search.loading}>Weitere Ergebnisse</button>}

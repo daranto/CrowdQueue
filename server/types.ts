@@ -34,6 +34,13 @@ export interface PlayerSnapshot {
   warning: string | null;
 }
 
+export interface SpotifyRateLimit {
+  limited: boolean;
+  retryAfter: number;
+  until: string | null;
+  reason: string | null;
+}
+
 export interface PartyState {
   party: { code: string; name: string; active: boolean; guestUrl: string };
   nowPlaying: Track | null;
@@ -41,6 +48,7 @@ export interface PartyState {
   queue: QueueItem[];
   nativeQueue: Track[];
   player: Omit<PlayerSnapshot, "current" | "nativeQueue">;
+  spotifyRateLimit: SpotifyRateLimit;
   limits: { maxOpenRequests: number; ownOpenRequests: number };
 }
 

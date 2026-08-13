@@ -45,11 +45,13 @@ Frontend: `http://127.0.0.1:5173`, API: `http://127.0.0.1:8080`. Im Demo-Modus i
 - Der Container läuft ohne Root-Rechte, mit schreibgeschütztem Root-Dateisystem und schreibt nur nach `/data`.
 - `/healthz` prüft Server und Datenbank.
 - Beendete Partys und nicht mehr benötigte Spotify-Metadaten werden nach sieben Tagen entfernt.
-- Spotify Refresh-Tokens werden verschlüsselt gespeichert. Die Schlüssel gehören ausschließlich in `.env`, nie in das Image oder Repository.
+- Spotify Refresh-Tokens werden verschlüsselt gespeichert. Die Schlüssel gehören ausschließlich in `.env`, nie in das Image oder Repository. Eine Rotation des Refresh-Tokens verlängert dessen ursprüngliche Sechsmonatsfrist nicht; bei `invalid_grant` bleibt der festgelegte Besitzer erhalten und kann Spotify ohne Setup-Token erneut verbinden.
 - Sichere regelmäßig das Docker-Volume. Ohne `ENCRYPTION_KEY` kann eine Sicherung der Spotify-Verbindung nicht wiederhergestellt werden.
 
 ## Grenzen von Spotify
 
 Spotify erlaubt das Lesen und Anhängen an die native Playback Queue, aber kein freies Entfernen oder Umsortieren. Deshalb verwaltet CrowdQueue eine eigene votierbare Queue und übergibt etwa 30 Sekunden vor Songende genau einen Gewinner an Spotify. Der danach gesperrte Titel kann technisch nicht mehr zurückgeholt werden.
+
+CrowdQueue fragt den Player höchstens alle zehn Sekunden ab und speichert Geräte, Suchergebnisse sowie die native Queue kurzzeitig zwischen. Antwortet Spotify dennoch mit `429 Too Many Requests`, wird `Retry-After` zentral und dauerhaft in SQLite gespeichert. Fehlt ein gültiger Header, greift ein persistentes exponentielles Backoff. Bis zum Ablauf sendet der Server keine weiteren Spotify-Anfragen; die Oberfläche zeigt die verbleibende Wartezeit an. Bereits vorhandene Musikwünsche und Votes bleiben in dieser Zeit verfügbar.
 
 Die Anwendung ist für private, nicht kommerzielle Feiern gedacht. Spotify Premium und die Spotify Developer Policy sind einzuhalten.

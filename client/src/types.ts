@@ -20,6 +20,13 @@ export interface QueueItem extends Track {
   error: string | null;
 }
 
+export interface SpotifyRateLimit {
+  limited: boolean;
+  retryAfter: number;
+  until: string | null;
+  reason: string | null;
+}
+
 export interface PartyState {
   party: { code: string; name: string; active: boolean; guestUrl: string };
   nowPlaying: Track | null;
@@ -35,6 +42,7 @@ export interface PartyState {
     updatedAt: string;
     warning: string | null;
   };
+  spotifyRateLimit: SpotifyRateLimit;
   limits: { maxOpenRequests: number; ownOpenRequests: number };
 }
 
@@ -46,6 +54,7 @@ export interface AdminState {
   demoMode: boolean;
   csrfToken?: string;
   spotify?: { connected: boolean; displayName: string | null; refreshExpiresAt: string | null; expiringSoon: boolean };
+  spotifyRateLimit?: SpotifyRateLimit;
   party?: PartyState | null;
   qrDataUrl?: string | null;
   selectedDeviceId?: string | null;

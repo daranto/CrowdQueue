@@ -1,6 +1,13 @@
 export class ApiError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly retryAfter: number | null = null,
+    readonly reason: string | null = null,
+    readonly until: string | null = null,
+  ) {
     super(message);
+    this.name = "ApiError";
   }
 }
 
@@ -13,7 +20,15 @@ export async function api<T>(url: string, init?: RequestInit): Promise<T> {
     },
   });
   const payload = response.headers.get("content-type")?.includes("application/json") ? await response.json() : null;
-  if (!response.ok) throw new ApiError(payload?.error ?? `Anfrage fehlgeschlagen (${response.status}).`, response.status);
+  if (!response.ok) {
+    throw new ApiError(
+      payload?.error ?? `Anfrage fehlgeschlagen (${response.status}).`,
+      response.status,
+      typeof payload?.retryAfter === "number" ? payload.retryAfter : null,
+      typeof payload?.reason === "string" ? payload.reason : null,
+      typeof payload?.until === "string" ? payload.until : null,
+    );
+  }
   return payload as T;
 }
 

@@ -1,7 +1,7 @@
 import { config } from "./config.js";
 import { AppDatabase } from "./database.js";
 import { decrypt, encrypt } from "./security.js";
-import type { PlayerSnapshot, SpotifyDevice, Track } from "./types.js";
+import type { PlayerSnapshot, SpotifyDevice, SpotifyRateLimit, Track } from "./types.js";
 
 interface TokenConnection {
   singleton: number;
@@ -19,9 +19,45 @@ export class SpotifyError extends Error {
     message: string,
     readonly status: number,
     readonly retryAfter: number | null = null,
+    readonly reason: string | null = null,
   ) {
     super(message);
+    this.name = "SpotifyError";
   }
+}
+
+type SearchResult = { items: Track[]; total: number; nextOffset: number | null };
+
+const RATE_LIMIT_UNTIL_KEY = "spotify_rate_limit_until";
+const RATE_LIMIT_REASON_KEY = "spotify_rate_limit_reason";
+const RATE_LIMIT_ATTEMPTS_KEY = "spotify_rate_limit_attempts";
+const SEARCH_CACHE_MS = 2 * 60_000;
+const TRACK_CACHE_MS = 10 * 60_000;
+const DEVICE_CACHE_MS = 60_000;
+const QUEUE_CACHE_MS = 30_000;
+
+function waitText(seconds: number): string {
+  const safe = Math.max(1, Math.ceil(seconds));
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  if (hours > 0) return `${hours} Std. ${minutes} Min.`;
+  if (minutes > 0) return `${minutes} Min.`;
+  return `${safe} Sek.`;
+}
+
+function rateLimitMessage(reason: string | null, retryAfter: number): string {
+  const message = reason === "QUOTA_EXCEEDED"
+    ? "Das Spotify-Kontingent ist vorübergehend ausgeschöpft. CrowdQueue wartet automatisch bis zum von Spotify genannten Zeitpunkt."
+    : "Spotify begrenzt momentan die Anfragen. CrowdQueue wartet automatisch bis zum von Spotify genannten Zeitpunkt.";
+  return `${message} Verbleibende Wartezeit: ca. ${waitText(retryAfter)}`;
+}
+
+function retryAfterSeconds(value: string | null): number | null {
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds > 0) return Math.ceil(seconds);
+  const date = Date.parse(value);
+  return Number.isFinite(date) && date > Date.now() ? Math.ceil((date - Date.now()) / 1000) : null;
 }
 
 const DEMO_TRACKS: Track[] = [
@@ -49,7 +85,11 @@ function mapTrack(item: any): Track {
 }
 
 export class SpotifyClient {
-  private readonly searchCache = new Map<string, { expires: number; result: { items: Track[]; total: number; nextOffset: number | null } }>();
+  private readonly searchCache = new Map<string, { expires: number; result: SearchResult }>();
+  private readonly searchInFlight = new Map<string, Promise<SearchResult>>();
+  private readonly trackCache = new Map<string, { expires: number; track: Track }>();
+  private deviceCache: { expires: number; devices: SpotifyDevice[] } | null = null;
+  private nativeQueueCache: { expires: number; tracks: Track[] } | null = null;
   private demoProgress = 30000;
 
   constructor(private readonly db: AppDatabase) {}
@@ -62,9 +102,109 @@ export class SpotifyClient {
     return config.demoMode || Boolean(this.connection());
   }
 
+  rateLimitInfo(): SpotifyRateLimit {
+    if (config.demoMode) return { limited: false, retryAfter: 0, until: null, reason: null };
+    const until = this.db.getSetting(RATE_LIMIT_UNTIL_KEY);
+    const untilMs = until ? Date.parse(until) : Number.NaN;
+    if (!Number.isFinite(untilMs) || untilMs <= Date.now()) {
+      if (until || this.db.getSetting(RATE_LIMIT_REASON_KEY)) {
+        this.db.sqlite.prepare("DELETE FROM settings WHERE key IN (?, ?)").run(RATE_LIMIT_UNTIL_KEY, RATE_LIMIT_REASON_KEY);
+      }
+      return { limited: false, retryAfter: 0, until: null, reason: null };
+    }
+    return {
+      limited: true,
+      retryAfter: Math.max(1, Math.ceil((untilMs - Date.now()) / 1000)),
+      until: new Date(untilMs).toISOString(),
+      reason: this.db.getSetting(RATE_LIMIT_REASON_KEY),
+    };
+  }
+
+  ensureAvailable(): void {
+    this.assertNotRateLimited();
+  }
+
+  private assertNotRateLimited(): void {
+    const limit = this.rateLimitInfo();
+    if (limit.limited) throw new SpotifyError(rateLimitMessage(limit.reason, limit.retryAfter), 429, limit.retryAfter, limit.reason);
+  }
+
+  private rememberRateLimit(retryAfter: number | null, reason: string | null): SpotifyRateLimit {
+    const existing = this.rateLimitInfo();
+    const previousAttempts = Number(this.db.getSetting(RATE_LIMIT_ATTEMPTS_KEY)) || 0;
+    const attempts = previousAttempts + 1;
+    this.db.setSetting(RATE_LIMIT_ATTEMPTS_KEY, String(attempts));
+    // Spotify's Retry-After header always wins. If it is missing or malformed,
+    // back off exponentially instead of retrying in a fixed loop.
+    const seconds = retryAfter ?? Math.min(3600, 60 * 2 ** Math.min(attempts - 1, 6));
+    const requestedUntil = Date.now() + Math.max(1, seconds) * 1000;
+    const existingUntil = existing.until ? Date.parse(existing.until) : 0;
+    const until = new Date(Math.max(requestedUntil, existingUntil)).toISOString();
+    this.db.setSetting(RATE_LIMIT_UNTIL_KEY, until);
+    if (reason || !existing.reason) this.db.setSetting(RATE_LIMIT_REASON_KEY, reason ?? "RATE_LIMITED");
+    return this.rateLimitInfo();
+  }
+
+  private clearRateLimitState(): void {
+    // Ein bereits parallel beobachtetes 429 darf nicht durch eine ältere,
+    // später eintreffende erfolgreiche Anfrage aufgehoben werden.
+    if (this.rateLimitInfo().limited) return;
+    this.db.sqlite.prepare("DELETE FROM settings WHERE key IN (?, ?, ?)").run(
+      RATE_LIMIT_UNTIL_KEY,
+      RATE_LIMIT_REASON_KEY,
+      RATE_LIMIT_ATTEMPTS_KEY,
+    );
+  }
+
+  private async errorFromResponse(response: Response, fallback: string): Promise<SpotifyError> {
+    let body: any = null;
+    try {
+      body = await response.json();
+    } catch {
+      // Spotify liefert bei manchen Fehlern absichtlich keinen JSON-Body.
+    }
+    const reason = typeof body?.error?.reason === "string"
+      ? body.error.reason
+      : typeof body?.reason === "string"
+        ? body.reason
+        : typeof body?.error === "string"
+          ? body.error
+          : null;
+    if (response.status === 429) {
+      const limit = this.rememberRateLimit(retryAfterSeconds(response.headers.get("retry-after")), reason);
+      return new SpotifyError(rateLimitMessage(limit.reason, limit.retryAfter), 429, limit.retryAfter, limit.reason);
+    }
+    let message = fallback;
+    if (typeof body?.error?.message === "string") message = body.error.message;
+    else if (body?.error === "invalid_grant") message = "Spotify muss erneut verbunden werden.";
+    else if (typeof body?.message === "string") message = body.message;
+    return new SpotifyError(message, response.status, null, reason);
+  }
+
+  private rememberTrack(track: Track): Track {
+    if (this.trackCache.size >= 1_000) {
+      const now = Date.now();
+      for (const [key, entry] of this.trackCache) {
+        if (entry.expires <= now || this.trackCache.size >= 1_000) this.trackCache.delete(key);
+        if (this.trackCache.size < 800) break;
+      }
+    }
+    this.trackCache.set(track.id, { expires: Date.now() + TRACK_CACHE_MS, track });
+    return track;
+  }
+
   private connection(): TokenConnection | null {
     const row = this.db.sqlite.prepare("SELECT * FROM spotify_connection WHERE singleton = 1").get() as unknown as TokenConnection | undefined;
     return row ?? null;
+  }
+
+  private clearConnection(): void {
+    this.db.sqlite.prepare("DELETE FROM spotify_connection WHERE singleton = 1").run();
+    this.searchCache.clear();
+    this.searchInFlight.clear();
+    this.trackCache.clear();
+    this.deviceCache = null;
+    this.nativeQueueCache = null;
   }
 
   authUrl(state: string): string {
@@ -79,6 +219,7 @@ export class SpotifyClient {
   }
 
   async exchangeCode(code: string, expectedAccountId: string | null = null): Promise<{ accountId: string; displayName: string }> {
+    this.ensureAvailable();
     const response = await fetch("https://accounts.spotify.com/api/token", {
       method: "POST",
       headers: {
@@ -87,10 +228,11 @@ export class SpotifyClient {
       },
       body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: config.spotifyRedirectUri }),
     });
-    if (!response.ok) throw new SpotifyError("Spotify-Anmeldung konnte nicht abgeschlossen werden.", response.status);
+    if (!response.ok) throw await this.errorFromResponse(response, "Spotify-Anmeldung konnte nicht abgeschlossen werden.");
     const token = await response.json() as any;
     const profileResponse = await fetch("https://api.spotify.com/v1/me", { headers: { Authorization: `Bearer ${token.access_token}` } });
-    if (!profileResponse.ok) throw new SpotifyError("Spotify-Profil konnte nicht gelesen werden.", profileResponse.status);
+    if (!profileResponse.ok) throw await this.errorFromResponse(profileResponse, "Spotify-Profil konnte nicht gelesen werden.");
+    this.clearRateLimitState();
     const profile = await profileResponse.json() as any;
     const accountId = profile.account_id ?? profile.id;
     if (expectedAccountId && accountId !== expectedAccountId) {
@@ -139,17 +281,21 @@ export class SpotifyClient {
       },
       body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: decrypt(connection.refresh_token) }),
     });
+    if (!response.ok) {
+      const error = await this.errorFromResponse(response, "Spotify-Token konnte nicht erneuert werden.");
+      if (error.reason === "invalid_grant") this.clearConnection();
+      throw error;
+    }
     const payload = await response.json() as any;
-    if (!response.ok) throw new SpotifyError(payload.error === "invalid_grant" ? "Spotify muss erneut verbunden werden." : "Spotify-Token konnte nicht erneuert werden.", response.status);
     const refreshToken = payload.refresh_token ? encrypt(payload.refresh_token) : connection.refresh_token;
-    const refreshIssued = payload.refresh_token ? new Date().toISOString() : connection.refresh_issued_at;
     this.db.sqlite.prepare(`
       UPDATE spotify_connection SET access_token=?, access_expires_at=?, refresh_token=?, refresh_issued_at=?, updated_at=? WHERE singleton=1
-    `).run(encrypt(payload.access_token), new Date(Date.now() + payload.expires_in * 1000).toISOString(), refreshToken, refreshIssued, new Date().toISOString());
+    `).run(encrypt(payload.access_token), new Date(Date.now() + payload.expires_in * 1000).toISOString(), refreshToken, connection.refresh_issued_at, new Date().toISOString());
     return payload.access_token;
   }
 
   private async request(path: string, init: RequestInit = {}, retry = true): Promise<Response> {
+    this.assertNotRateLimited();
     const token = await this.token();
     const response = await fetch(`https://api.spotify.com/v1${path}`, {
       ...init,
@@ -160,20 +306,16 @@ export class SpotifyClient {
       return this.request(path, init, false);
     }
     if (!response.ok) {
-      const retryAfter = response.headers.get("retry-after");
-      let message = response.status === 403 ? "Spotify hat den Befehl abgelehnt. Premium und Gerätestatus prüfen." : `Spotify-Fehler (${response.status}).`;
-      try {
-        const body = await response.json() as any;
-        message = body?.error?.message ?? message;
-      } catch {
-        // Spotify liefert bei manchen Fehlern absichtlich keinen JSON-Body.
-      }
-      throw new SpotifyError(message, response.status, retryAfter ? Number(retryAfter) : null);
+      const fallback = response.status === 403
+        ? "Spotify hat den Befehl abgelehnt. Premium und Gerätestatus prüfen."
+        : `Spotify-Fehler (${response.status}).`;
+      throw await this.errorFromResponse(response, fallback);
     }
+    this.clearRateLimitState();
     return response;
   }
 
-  async search(query: string, offset: number): Promise<{ items: Track[]; total: number; nextOffset: number | null }> {
+  async search(query: string, offset: number): Promise<SearchResult> {
     const normalized = query.trim().slice(0, 100);
     if (normalized.length < 2) return { items: [], total: 0, nextOffset: null };
     if (config.demoMode) {
@@ -183,18 +325,31 @@ export class SpotifyClient {
     const key = `${normalized}:${offset}`;
     const cached = this.searchCache.get(key);
     if (cached && cached.expires > Date.now()) return cached.result;
-    const response = await this.request(`/search?${new URLSearchParams({ q: normalized, type: "track", limit: "10", offset: String(Math.max(0, offset)) })}`);
-    const payload = await response.json() as any;
-    const items = (payload.tracks?.items ?? []).filter((item: any) => item?.is_playable !== false && !item?.is_local).map(mapTrack);
-    const result = { items, total: payload.tracks?.total ?? items.length, nextOffset: payload.tracks?.next ? offset + 10 : null };
-    if (this.searchCache.size >= 500) {
-      for (const [cacheKey, entry] of this.searchCache) {
-        if (entry.expires <= Date.now() || this.searchCache.size >= 500) this.searchCache.delete(cacheKey);
-        if (this.searchCache.size < 400) break;
+    const pending = this.searchInFlight.get(key);
+    if (pending) return pending;
+    const request = (async () => {
+      const response = await this.request(`/search?${new URLSearchParams({ q: normalized, type: "track", limit: "10", offset: String(Math.max(0, offset)) })}`);
+      const payload = await response.json() as any;
+      const items = (payload.tracks?.items ?? [])
+        .filter((item: any) => item?.is_playable !== false && !item?.is_local)
+        .map(mapTrack)
+        .map((track: Track) => this.rememberTrack(track));
+      const result = { items, total: payload.tracks?.total ?? items.length, nextOffset: payload.tracks?.next ? offset + 10 : null };
+      if (this.searchCache.size >= 500) {
+        for (const [cacheKey, entry] of this.searchCache) {
+          if (entry.expires <= Date.now() || this.searchCache.size >= 500) this.searchCache.delete(cacheKey);
+          if (this.searchCache.size < 400) break;
+        }
       }
+      this.searchCache.set(key, { expires: Date.now() + SEARCH_CACHE_MS, result });
+      return result;
+    })();
+    this.searchInFlight.set(key, request);
+    try {
+      return await request;
+    } finally {
+      if (this.searchInFlight.get(key) === request) this.searchInFlight.delete(key);
     }
-    this.searchCache.set(key, { expires: Date.now() + 30000, result });
-    return result;
   }
 
   async track(id: string): Promise<Track> {
@@ -204,21 +359,26 @@ export class SpotifyClient {
       if (!track) throw new SpotifyError("Der Demo-Song wurde nicht gefunden.", 404);
       return track;
     }
+    const cached = this.trackCache.get(id);
+    if (cached && cached.expires > Date.now()) return cached.track;
     const response = await this.request(`/tracks/${encodeURIComponent(id)}`);
-    return mapTrack(await response.json());
+    return this.rememberTrack(mapTrack(await response.json()));
   }
 
-  async devices(): Promise<SpotifyDevice[]> {
+  async devices(force = false): Promise<SpotifyDevice[]> {
     if (config.demoMode) return [{ id: "demo-iphone", name: "Party iPhone", type: "Smartphone", isActive: true, isRestricted: false }];
+    if (!force && this.deviceCache && this.deviceCache.expires > Date.now()) return this.deviceCache.devices;
     const response = await this.request("/me/player/devices");
     const payload = await response.json() as any;
-    return (payload.devices ?? []).filter((device: any) => device.id).map((device: any) => ({
+    const devices = (payload.devices ?? []).filter((device: any) => device.id).map((device: any) => ({
       id: device.id,
       name: device.name,
       type: device.type,
       isActive: Boolean(device.is_active),
       isRestricted: Boolean(device.is_restricted),
     }));
+    this.deviceCache = { expires: Date.now() + DEVICE_CACHE_MS, devices };
+    return devices;
   }
 
   async player(): Promise<PlayerSnapshot> {
@@ -236,12 +396,20 @@ export class SpotifyClient {
         warning: null,
       };
     }
-    const [stateResponse, queueResponse] = await Promise.all([this.request("/me/player"), this.request("/me/player/queue")]);
+    const stateResponse = await this.request("/me/player");
     if (stateResponse.status === 204) {
       return { isPlaying: false, progressMs: 0, deviceId: null, deviceName: null, deviceRestricted: false, current: null, nativeQueue: [], updatedAt: new Date().toISOString(), warning: "Kein aktives Spotify-Gerät gefunden." };
     }
     const state = await stateResponse.json() as any;
-    const queue = await queueResponse.json() as any;
+    let nativeQueue: Track[];
+    if (this.nativeQueueCache && this.nativeQueueCache.expires > Date.now()) {
+      nativeQueue = this.nativeQueueCache.tracks;
+    } else {
+      const queueResponse = await this.request("/me/player/queue");
+      const queue = await queueResponse.json() as any;
+      nativeQueue = (queue.queue ?? []).filter((item: any) => item?.type === "track").slice(0, 20).map(mapTrack);
+      this.nativeQueueCache = { expires: Date.now() + QUEUE_CACHE_MS, tracks: nativeQueue };
+    }
     return {
       isPlaying: Boolean(state.is_playing),
       progressMs: state.progress_ms ?? 0,
@@ -249,7 +417,7 @@ export class SpotifyClient {
       deviceName: state.device?.name ?? null,
       deviceRestricted: Boolean(state.device?.is_restricted),
       current: state.item?.type === "track" ? mapTrack(state.item) : null,
-      nativeQueue: (queue.queue ?? []).filter((item: any) => item?.type === "track").slice(0, 20).map(mapTrack),
+      nativeQueue,
       updatedAt: new Date().toISOString(),
       warning: state.device?.is_restricted ? "Dieses Spotify-Gerät kann nicht ferngesteuert werden." : null,
     };
@@ -260,24 +428,40 @@ export class SpotifyClient {
     const query = new URLSearchParams({ uri: track.uri });
     if (deviceId) query.set("device_id", deviceId);
     await this.request(`/me/player/queue?${query}`, { method: "POST" });
+    if (this.nativeQueueCache) {
+      this.nativeQueueCache = {
+        expires: Date.now() + QUEUE_CACHE_MS,
+        tracks: [...this.nativeQueueCache.tracks, track].slice(0, 20),
+      };
+    }
   }
 
   async playNow(track: Track, deviceId: string | null): Promise<void> {
     if (config.demoMode) return;
     const query = deviceId ? `?device_id=${encodeURIComponent(deviceId)}` : "";
     await this.request(`/me/player/play${query}`, { method: "PUT", body: JSON.stringify({ uris: [track.uri] }) });
+    this.nativeQueueCache = null;
   }
 
   async control(action: "pause" | "resume" | "next", deviceId: string | null): Promise<void> {
     if (config.demoMode) return;
     const query = deviceId ? `?device_id=${encodeURIComponent(deviceId)}` : "";
-    if (action === "next") await this.request(`/me/player/next${query}`, { method: "POST" });
+    if (action === "next") {
+      await this.request(`/me/player/next${query}`, { method: "POST" });
+      this.nativeQueueCache = null;
+    }
     else await this.request(`/me/player/${action === "pause" ? "pause" : "play"}${query}`, { method: "PUT" });
   }
 
   async transfer(deviceId: string): Promise<void> {
     if (config.demoMode) return;
     await this.request("/me/player", { method: "PUT", body: JSON.stringify({ device_ids: [deviceId], play: false }) });
+    if (this.deviceCache) {
+      this.deviceCache = {
+        expires: this.deviceCache.expires,
+        devices: this.deviceCache.devices.map((device) => ({ ...device, isActive: device.id === deviceId })),
+      };
+    }
   }
 
   connectionInfo(): { connected: boolean; displayName: string | null; refreshExpiresAt: string | null; expiringSoon: boolean } {

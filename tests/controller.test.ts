@@ -18,6 +18,7 @@ function setup(player: PlayerSnapshot | Error) {
   let added = 0;
   const spotify = {
     isConnected: () => true,
+    rateLimitInfo: () => ({ limited: false, retryAfter: 0, until: null, reason: null }),
     player: async () => { if (player instanceof Error) throw player; return player; },
     addToQueue: async () => { added += 1; },
   };
