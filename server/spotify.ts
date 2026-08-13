@@ -1,5 +1,6 @@
 import { config } from "./config.js";
 import { AppDatabase } from "./database.js";
+import { ApiMetrics, normalizeSpotifyOperation, type SpotifyRequestSource } from "./metrics.js";
 import { decrypt, encrypt } from "./security.js";
 import type { PlayerSnapshot, SpotifyDevice, SpotifyRateLimit, Track } from "./types.js";
 
@@ -100,7 +101,10 @@ export class SpotifyClient {
   private tokenRefreshInFlight: Promise<string> | null = null;
   private demoProgress = 30000;
 
-  constructor(private readonly db: AppDatabase) {}
+  constructor(
+    private readonly db: AppDatabase,
+    private readonly metrics?: ApiMetrics,
+  ) {}
 
   isConfigured(): boolean {
     return config.demoMode || Boolean(config.spotifyClientId && config.spotifyClientSecret);
@@ -199,10 +203,16 @@ export class SpotifyClient {
     next?.();
   }
 
-  private async scheduledFetch(url: string, init: RequestInit, priority: SpotifyRequestPriority): Promise<Response> {
-    const release = await this.acquireRequestSlot(priority);
+  private async scheduledFetch(url: string, init: RequestInit, source: SpotifyRequestSource): Promise<Response> {
+    const release = await this.acquireRequestSlot(source === "guest" ? "guest" : "trusted");
+    const startedAt = Date.now();
     try {
-      return await fetch(url, { ...init, signal: init.signal ?? AbortSignal.timeout(10_000) });
+      const response = await fetch(url, { ...init, signal: init.signal ?? AbortSignal.timeout(10_000) });
+      this.metrics?.recordSpotify(source, normalizeSpotifyOperation(url, init.method), response.status, Date.now() - startedAt);
+      return response;
+    } catch (error) {
+      this.metrics?.recordSpotify(source, normalizeSpotifyOperation(url, init.method), 0, Date.now() - startedAt);
+      throw error;
     } finally {
       release();
     }
@@ -272,17 +282,19 @@ export class SpotifyClient {
 
   async exchangeCode(code: string, expectedAccountId: string | null = null): Promise<{ accountId: string; displayName: string }> {
     this.ensureAvailable();
-    const response = await fetch("https://accounts.spotify.com/api/token", {
+    const response = await this.scheduledFetch("https://accounts.spotify.com/api/token", {
       method: "POST",
       headers: {
         Authorization: `Basic ${Buffer.from(`${config.spotifyClientId}:${config.spotifyClientSecret}`).toString("base64")}`,
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: config.spotifyRedirectUri }),
-    });
+    }, "oauth");
     if (!response.ok) throw await this.errorFromResponse(response, "Spotify-Anmeldung konnte nicht abgeschlossen werden.");
     const token = await response.json() as any;
-    const profileResponse = await fetch("https://api.spotify.com/v1/me", { headers: { Authorization: `Bearer ${token.access_token}` } });
+    const profileResponse = await this.scheduledFetch("https://api.spotify.com/v1/me", {
+      headers: { Authorization: `Bearer ${token.access_token}` },
+    }, "oauth");
     if (!profileResponse.ok) throw await this.errorFromResponse(profileResponse, "Spotify-Profil konnte nicht gelesen werden.");
     this.clearRateLimitState();
     const profile = await profileResponse.json() as any;
@@ -321,7 +333,7 @@ export class SpotifyClient {
     return { accountId, displayName: profile.display_name ?? "Spotify Admin" };
   }
 
-  private async refreshAccessToken(connection: TokenConnection, priority: SpotifyRequestPriority): Promise<string> {
+  private async refreshAccessToken(connection: TokenConnection, source: SpotifyRequestSource): Promise<string> {
     const response = await this.scheduledFetch("https://accounts.spotify.com/api/token", {
       method: "POST",
       headers: {
@@ -329,7 +341,7 @@ export class SpotifyClient {
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: decrypt(connection.refresh_token) }),
-    }, priority);
+    }, source);
     if (!response.ok) {
       const error = await this.errorFromResponse(response, "Spotify-Token konnte nicht erneuert werden.");
       if (error.reason === "invalid_grant") this.clearConnection();
@@ -343,12 +355,12 @@ export class SpotifyClient {
     return payload.access_token;
   }
 
-  private async token(priority: SpotifyRequestPriority): Promise<string> {
+  private async token(source: SpotifyRequestSource): Promise<string> {
     const connection = this.connection();
     if (!connection) throw new SpotifyError("Spotify ist nicht verbunden.", 401);
     if (Date.parse(connection.access_expires_at) > Date.now() + 60000) return decrypt(connection.access_token);
     if (this.tokenRefreshInFlight) return this.tokenRefreshInFlight;
-    const refresh = this.refreshAccessToken(connection, priority);
+    const refresh = this.refreshAccessToken(connection, source);
     this.tokenRefreshInFlight = refresh;
     try {
       return await refresh;
@@ -357,16 +369,16 @@ export class SpotifyClient {
     }
   }
 
-  private async request(path: string, init: RequestInit = {}, priority: SpotifyRequestPriority = "trusted", retry = true): Promise<Response> {
+  private async request(path: string, init: RequestInit = {}, source: SpotifyRequestSource = "admin", retry = true): Promise<Response> {
     this.assertNotRateLimited();
-    const token = await this.token(priority);
+    const token = await this.token(source);
     const response = await this.scheduledFetch(`https://api.spotify.com/v1${path}`, {
       ...init,
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...init.headers },
-    }, priority);
+    }, source);
     if (response.status === 401 && retry) {
       this.db.sqlite.prepare("UPDATE spotify_connection SET access_expires_at=? WHERE singleton=1").run(new Date(0).toISOString());
-      return this.request(path, init, priority, false);
+      return this.request(path, init, source, false);
     }
     if (!response.ok) {
       const fallback = response.status === 403
@@ -378,7 +390,7 @@ export class SpotifyClient {
     return response;
   }
 
-  async search(query: string, offset: number, priority: SpotifyRequestPriority = "trusted"): Promise<SearchResult> {
+  async search(query: string, offset: number, source: "admin" | "guest" = "admin"): Promise<SearchResult> {
     const normalized = query.trim().slice(0, 100);
     if (normalized.length < 2) return { items: [], total: 0, nextOffset: null };
     if (config.demoMode) {
@@ -392,8 +404,8 @@ export class SpotifyClient {
     if (pending) return pending;
     const request = (async () => {
       this.assertNotRateLimited();
-      if (priority === "guest") this.reserveGuestBudget();
-      const response = await this.request(`/search?${new URLSearchParams({ q: normalized, type: "track", limit: "10", offset: String(Math.max(0, offset)) })}`, {}, priority);
+      if (source === "guest") this.reserveGuestBudget();
+      const response = await this.request(`/search?${new URLSearchParams({ q: normalized, type: "track", limit: "10", offset: String(Math.max(0, offset)) })}`, {}, source);
       const payload = await response.json() as any;
       const items = (payload.tracks?.items ?? [])
         .filter((item: any) => item?.is_playable !== false && !item?.is_local)
@@ -417,7 +429,7 @@ export class SpotifyClient {
     }
   }
 
-  async track(id: string, priority: SpotifyRequestPriority = "trusted"): Promise<Track> {
+  async track(id: string, source: "admin" | "guest" = "admin"): Promise<Track> {
     if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) throw new SpotifyError("Ungültige Spotify-Song-ID.", 400);
     if (config.demoMode) {
       const track = DEMO_TRACKS.find((item) => item.id === id);
@@ -427,8 +439,8 @@ export class SpotifyClient {
     const cached = this.trackCache.get(id);
     if (cached && cached.expires > Date.now()) return cached.track;
     this.assertNotRateLimited();
-    if (priority === "guest") this.reserveGuestBudget();
-    const response = await this.request(`/tracks/${encodeURIComponent(id)}`, {}, priority);
+    if (source === "guest") this.reserveGuestBudget();
+    const response = await this.request(`/tracks/${encodeURIComponent(id)}`, {}, source);
     return this.rememberTrack(mapTrack(await response.json()));
   }
 
@@ -463,7 +475,7 @@ export class SpotifyClient {
         warning: null,
       };
     }
-    const stateResponse = await this.request("/me/player");
+    const stateResponse = await this.request("/me/player", {}, "controller");
     if (stateResponse.status === 204) {
       return { isPlaying: false, progressMs: 0, deviceId: null, deviceName: null, deviceRestricted: false, current: null, nativeQueue: [], updatedAt: new Date().toISOString(), warning: "Kein aktives Spotify-Gerät gefunden." };
     }
@@ -472,7 +484,7 @@ export class SpotifyClient {
     if (this.nativeQueueCache && this.nativeQueueCache.expires > Date.now()) {
       nativeQueue = this.nativeQueueCache.tracks;
     } else {
-      const queueResponse = await this.request("/me/player/queue");
+      const queueResponse = await this.request("/me/player/queue", {}, "controller");
       const queue = await queueResponse.json() as any;
       nativeQueue = (queue.queue ?? []).filter((item: any) => item?.type === "track").slice(0, 20).map(mapTrack);
       this.nativeQueueCache = { expires: Date.now() + QUEUE_CACHE_MS, tracks: nativeQueue };
@@ -494,7 +506,7 @@ export class SpotifyClient {
     if (config.demoMode) return;
     const query = new URLSearchParams({ uri: track.uri });
     if (deviceId) query.set("device_id", deviceId);
-    await this.request(`/me/player/queue?${query}`, { method: "POST" });
+    await this.request(`/me/player/queue?${query}`, { method: "POST" }, "controller");
     if (this.nativeQueueCache) {
       this.nativeQueueCache = {
         expires: Date.now() + QUEUE_CACHE_MS,

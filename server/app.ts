@@ -10,6 +10,7 @@ import { config } from "./config.js";
 import { QueueController } from "./controller.js";
 import { AppDatabase } from "./database.js";
 import { PartyEvents } from "./events.js";
+import { ApiMetrics, type StatisticsRange } from "./metrics.js";
 import { ipDigest, matchesSecret, randomToken, sign, verify } from "./security.js";
 import { SpotifyClient, SpotifyError } from "./spotify.js";
 import type { SpotifyDevice } from "./types.js";
@@ -47,7 +48,8 @@ export async function buildApp(options: AppOptions = {}) {
     maxRequestsPerSocket: 1_000,
   });
   const db = new AppDatabase(options.databasePath);
-  const spotify = new SpotifyClient(db);
+  const metrics = new ApiMetrics(db);
+  const spotify = new SpotifyClient(db, metrics);
   const events = new PartyEvents();
   const controller = new QueueController(db, spotify, events);
   const configuredOrigins = [config.publicBaseUrl, config.lanBaseUrl].map((value) => new URL(value));
@@ -59,6 +61,21 @@ export async function buildApp(options: AppOptions = {}) {
     max: 600,
     timeWindow: "1 minute",
     keyGenerator: (request) => ipDigest(request.ip),
+  });
+
+  app.addHook("onResponse", async (request, reply) => {
+    const route = String(request.routeOptions.url ?? "");
+    if (!route.startsWith("/api/") && route !== "/healthz") return;
+    const source = route === "/healthz"
+      ? "health"
+      : route.startsWith("/api/parties/")
+        ? "guest"
+        : route.startsWith("/api/admin/spotify/")
+          ? "oauth"
+          : route.startsWith("/api/admin/")
+            ? activeAdmin(request) ? "admin" : "anonymous"
+            : "unknown";
+    metrics.recordInbound(source, `${request.method} ${route || "unmatched"}`, reply.statusCode);
   });
 
   app.addHook("onRequest", async (request, reply) => {
@@ -309,6 +326,15 @@ export async function buildApp(options: AppOptions = {}) {
     });
   });
 
+  app.get<{ Querystring: { range?: string } }>("/api/admin/statistics", { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } }, async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    const range = request.query.range ?? "24h";
+    if (!["1h", "24h", "7d", "30d"].includes(range)) {
+      return reply.code(400).send({ error: "Ungültiger Statistik-Zeitraum." });
+    }
+    return reply.send(metrics.statistics(range as StatisticsRange));
+  });
+
   app.post<{ Body: { setupToken?: string } }>("/api/admin/spotify/login", { config: { rateLimit: { max: 10, timeWindow: "15 minutes" } } }, async (request, reply) => {
     const ownerExists = Boolean(db.getSetting("owner_account_id"));
     if (!ownerExists && request.body?.setupToken !== config.adminSetupToken) return reply.code(403).send({ error: "Das einmalige Setup-Token ist ungültig." });
@@ -448,10 +474,11 @@ export async function buildApp(options: AppOptions = {}) {
     clearInterval(heartbeat);
     clearInterval(cleanup);
     controller.stop();
+    metrics.close();
     db.close();
   });
 
-  return Object.assign(app, { appDb: db, spotify, controller });
+  return Object.assign(app, { appDb: db, spotify, controller, metrics });
 }
 
 declare module "fastify" {

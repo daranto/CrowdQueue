@@ -22,6 +22,24 @@ describe("HTTP API", () => {
     assert.equal(admin.json().authenticated, true);
   });
 
+  it("liefert persistente API-Statistiken ausschließlich an den Admin", async () => {
+    const app = await buildApp({ databasePath: ":memory:", logger: false });
+    apps.push(app);
+    await app.inject({ url: "/api/admin/state", headers: { "x-demo-admin": "true" } });
+    await app.inject({ url: "/healthz", headers: { authorization: `Bearer ${config.healthcheckToken}` } });
+
+    const unauthorized = await app.inject({ url: "/api/admin/statistics?range=24h" });
+    assert.equal(unauthorized.statusCode, 401);
+    const response = await app.inject({ url: "/api/admin/statistics?range=24h", headers: { "x-demo-admin": "true" } });
+    assert.equal(response.statusCode, 200);
+    assert.ok(response.json().summary.inbound >= 2);
+    assert.ok(response.json().inboundSources.some((item: { key: string }) => item.key === "admin"));
+    assert.ok(response.json().inboundSources.some((item: { key: string }) => item.key === "health"));
+    assert.equal(response.json().range, "24h");
+    assert.ok(response.json().timeline.length >= 24);
+    assert.equal((await app.inject({ url: "/api/admin/statistics?range=year", headers: { "x-demo-admin": "true" } })).statusCode, 400);
+  });
+
   it("erstellt eine Party, verhindert Eigenvotes und zählt den Doppelwunsch eines anderen Gasts", async () => {
     const app = await buildApp({ databasePath: ":memory:", logger: false });
     apps.push(app);

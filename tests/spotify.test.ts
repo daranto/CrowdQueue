@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { config } from "../server/config.js";
 import { AppDatabase } from "../server/database.js";
+import { ApiMetrics } from "../server/metrics.js";
 import { decrypt, encrypt } from "../server/security.js";
 import { SpotifyClient } from "../server/spotify.js";
 
@@ -24,6 +25,23 @@ function connectedDatabase(): AppDatabase {
 }
 
 describe("Spotify Admin-Login", () => {
+  it("erfasst nur tatsächlich an Spotify gesendete Netzwerkaufrufe", async () => {
+    config.demoMode = false;
+    const db = connectedDatabase();
+    const metrics = new ApiMetrics(db);
+    globalThis.fetch = async () => Response.json({ devices: [] });
+    const spotify = new SpotifyClient(db, metrics);
+
+    await spotify.devices();
+    await spotify.devices();
+    const statistics = metrics.statistics("1h");
+    assert.equal(statistics.summary.spotify, 1, "der Geräte-Cache darf keinen zweiten Spotify-Aufruf erzeugen");
+    assert.deepEqual(statistics.spotifySources.map((item) => [item.key, item.count]), [["admin", 1]]);
+    assert.equal(statistics.spotifyOperations[0].key, "GET /v1/me/player/devices");
+    metrics.close();
+    db.close();
+  });
+
   it("überschreibt die bestehende Verbindung bei einem falschen Konto nicht", async () => {
     const db = new AppDatabase(":memory:");
     db.sqlite.prepare(`

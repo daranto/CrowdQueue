@@ -23,6 +23,8 @@ Der erste erfolgreich verbundene Spotify-Account wird dauerhaft als Besitzer fes
 
 Im Adminbereich lässt sich der aktive Gast-QR-Code zusätzlich exportieren. Verfügbar sind ein gestaltetes A4-Plakat, Kartenbögen mit 2, 4, 6, 8, 9 oder 12 Exemplaren und Schnittlinien sowie jeweils eine Farb- und eine tonerarme Schwarzweiß-Version. Der reine QR-Code kann außerdem hochauflösend als PNG geladen werden. Sämtliche Dateien entstehen lokal im Browser.
 
+Die Admin-Konsole enthält außerdem eine API-Statistik für eine Stunde, 24 Stunden, sieben Tage oder 30 Tage. Sie zeigt eingehende CrowdQueue-Aufrufe nach Quelle und Endpoint sowie ausschließlich tatsächlich an Spotify gesendete Netzwerkaufrufe nach Auslöser, Endpoint, Fehlern, 429-Antworten und durchschnittlicher Antwortzeit. Cache-Treffer werden nicht als Spotify-Aufruf gezählt. Die Erfassung speichert nur minutenweise Summen; IP-Adressen, Party-Codes, Suchbegriffe, Song- und Geräte-IDs werden nicht übernommen.
+
 ## Caddy
 
 [`Caddyfile.example`](./Caddyfile.example) enthält Beispiele für eine öffentliche Domain und einen nur im WLAN auflösbaren Hostnamen. Hinter Caddy wird `TRUST_PROXY` auf die exakte Proxy-IP oder ein enges privates Proxy-Netz gesetzt. `true` wird aus Sicherheitsgründen nur als Vertrauen in lokale/private Netze interpretiert. Stelle den App-Port im öffentlichen Betrieb nicht zusätzlich am Router frei, sondern leite ausschließlich über Caddy weiter.
@@ -49,6 +51,7 @@ Frontend: `http://127.0.0.1:5173`, API: `http://127.0.0.1:8080`. Im Demo-Modus i
 - Der Container läuft ohne Root-Rechte, mit schreibgeschütztem Root-Dateisystem und schreibt nur nach `/data`.
 - `/healthz` prüft Server und Datenbank, akzeptiert aber ausschließlich `Authorization: Bearer $HEALTHCHECK_TOKEN`. Der Docker-Healthcheck sendet diesen Header intern; öffentliche Aufrufe erhalten 404.
 - Beendete Partys und nicht mehr benötigte Spotify-Metadaten werden nach sieben Tagen entfernt.
+- Aggregierte API-Statistiken bleiben maximal 30 Tage erhalten und werden in derselben SQLite-Datenbank gespeichert.
 - Spotify Refresh-Tokens werden verschlüsselt gespeichert. Die Schlüssel gehören ausschließlich in `.env`, nie in das Image oder Repository. Eine Rotation des Refresh-Tokens verlängert dessen ursprüngliche Sechsmonatsfrist nicht; bei `invalid_grant` bleibt der festgelegte Besitzer erhalten und kann Spotify ohne Setup-Token erneut verbinden.
 - Sichere regelmäßig das Docker-Volume. Ohne `ENCRYPTION_KEY` kann eine Sicherung der Spotify-Verbindung nicht wiederhergestellt werden.
 

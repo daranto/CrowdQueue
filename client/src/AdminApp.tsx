@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError, api } from "./api";
 import { Brand, EmptyState, Loading, Notice, QueueRow, SearchResult, SpotifyLimitNotice } from "./components";
 import { QrExportDialog } from "./QrExportDialog";
-import type { AdminState, Track } from "./types";
+import { StatisticsPanel } from "./StatisticsPanel";
+import type { AdminState, ApiStatistics, StatisticsRange, Track } from "./types";
 import { useSearch } from "./useSearch";
 
 export function AdminApp() {
@@ -16,11 +17,16 @@ export function AdminApp() {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState<string | number | null>(null);
   const [qrExportOpen, setQrExportOpen] = useState(false);
+  const [statistics, setStatistics] = useState<ApiStatistics | null>(null);
+  const [statisticsRange, setStatisticsRange] = useState<StatisticsRange>("24h");
+  const [statisticsLoading, setStatisticsLoading] = useState(false);
+  const [statisticsError, setStatisticsError] = useState<string | null>(null);
   const rateLimited = state?.spotifyRateLimit?.limited ?? false;
   const spotifyConnected = state?.spotify?.connected ?? state?.connected ?? false;
   const spotifyUnavailable = rateLimited || !spotifyConnected;
   const search = useSearch("/api/admin/search", state?.authenticated && !spotifyUnavailable ? query : "");
   const demoMode = state?.demoMode ?? false;
+  const authenticated = state?.authenticated ?? false;
   const oauthError = new URLSearchParams(window.location.search).get("error");
   const oauthErrorMessage = oauthError === "falsches_konto"
     ? "Dieses Spotify-Konto ist nicht als Besitzer hinterlegt. Bitte melde dich mit dem ursprünglichen Admin-Konto an."
@@ -39,7 +45,28 @@ export function AdminApp() {
     }
   }, [demoMode]);
 
+  const loadStatistics = useCallback(async () => {
+    if (!authenticated) return;
+    setStatisticsLoading(true);
+    try {
+      const headers = demoMode ? { "x-demo-admin": "true" } : undefined;
+      setStatistics(await api<ApiStatistics>(`/api/admin/statistics?range=${statisticsRange}`, { headers }));
+      setStatisticsError(null);
+    } catch (caught) {
+      setStatisticsError(caught instanceof Error ? caught.message : "Statistik konnte nicht geladen werden.");
+    } finally {
+      setStatisticsLoading(false);
+    }
+  }, [authenticated, demoMode, statisticsRange]);
+
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void loadStatistics(); }, [loadStatistics]);
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible" && navigator.onLine) void loadStatistics();
+    }, 60000);
+    return () => window.clearInterval(timer);
+  }, [loadStatistics]);
   useEffect(() => {
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible" && navigator.onLine) void load();
@@ -146,6 +173,15 @@ export function AdminApp() {
         <SpotifyLimitNotice limit={state.spotifyRateLimit} />
         {!spotifyConnected && <Notice tone="error"><strong>Die Spotify-Verbindung ist abgelaufen.</strong> Verbinde das hinterlegte Besitzerkonto erneut. Das einmalige Setup-Token wird dafür nicht benötigt. <button className="inline-button" type="button" onClick={() => void login()} disabled={!state.configured || rateLimited || busy === "login"}>{busy === "login" ? "Verbindung wird gestartet …" : "Spotify erneut verbinden"}</button></Notice>}
         {state.spotify?.expiringSoon && <Notice>Die Spotify-Verbindung läuft bald ab. Bitte verbinde das Konto vorsorglich neu.</Notice>}
+
+        <StatisticsPanel
+          statistics={statistics}
+          range={statisticsRange}
+          loading={statisticsLoading}
+          error={statisticsError}
+          onRangeChange={setStatisticsRange}
+          onRefresh={() => void loadStatistics()}
+        />
 
         {!state.party ? (
           <section className="admin-card create-party">

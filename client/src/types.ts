@@ -62,3 +62,38 @@ export interface AdminState {
   publicBaseUrl?: string;
   lanBaseUrl?: string;
 }
+
+export type StatisticsRange = "1h" | "24h" | "7d" | "30d";
+
+export interface MetricBreakdown {
+  key: string;
+  count: number;
+  errors: number;
+  rateLimits: number;
+}
+
+export interface ApiStatistics {
+  range: StatisticsRange;
+  from: string;
+  to: string;
+  resolutionMinutes: number;
+  summary: {
+    inbound: number;
+    inboundRateLimits: number;
+    spotify: number;
+    spotifyErrors: number;
+    spotifyRateLimits: number;
+    averageSpotifyDurationMs: number;
+  };
+  timeline: Array<{
+    at: string;
+    inbound: number;
+    spotify: number;
+    spotifyErrors: number;
+    spotifyRateLimits: number;
+  }>;
+  inboundSources: MetricBreakdown[];
+  inboundOperations: MetricBreakdown[];
+  spotifySources: MetricBreakdown[];
+  spotifyOperations: MetricBreakdown[];
+}

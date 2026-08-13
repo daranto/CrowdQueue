@@ -106,6 +106,20 @@ const migrations = [
     SELECT RAISE(ABORT, 'Eigene Wünsche können nicht bewertet werden.');
   END;
   `,
+  `
+  CREATE TABLE IF NOT EXISTS api_metric_buckets (
+    bucket_start INTEGER NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('inbound','spotify')),
+    source TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    status_code INTEGER NOT NULL,
+    request_count INTEGER NOT NULL DEFAULT 0,
+    duration_ms_total INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(bucket_start, kind, source, operation, status_code)
+  );
+  CREATE INDEX IF NOT EXISTS idx_api_metric_buckets_kind_time
+    ON api_metric_buckets(kind, bucket_start);
+  `,
 ];
 
 function iso(): string {
@@ -418,5 +432,7 @@ export class AppDatabase {
         AND id NOT IN (SELECT requested_by FROM queue_items)
         AND id NOT IN (SELECT device_id FROM votes)
     `).run(cutoff);
+    const metricsCutoff = Date.now() - 30 * 24 * 60 * 60 * 1_000;
+    this.sqlite.prepare("DELETE FROM api_metric_buckets WHERE bucket_start < ?").run(metricsCutoff);
   }
 }
