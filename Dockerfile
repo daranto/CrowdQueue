@@ -19,5 +19,5 @@ RUN mkdir -p /data && chown -R node:node /app /data
 USER node
 VOLUME ["/data"]
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD ["node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD ["node", "-e", "fetch('http://127.0.0.1:8080/healthz',{headers:{Authorization:'Bearer '+(process.env.HEALTHCHECK_TOKEN||'')}}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
 CMD ["node", "--experimental-sqlite", "dist-server/server/index.js"]

@@ -27,6 +27,7 @@ export class SpotifyError extends Error {
 }
 
 type SearchResult = { items: Track[]; total: number; nextOffset: number | null };
+type SpotifyRequestPriority = "trusted" | "guest";
 
 const RATE_LIMIT_UNTIL_KEY = "spotify_rate_limit_until";
 const RATE_LIMIT_REASON_KEY = "spotify_rate_limit_reason";
@@ -35,6 +36,8 @@ const SEARCH_CACHE_MS = 2 * 60_000;
 const TRACK_CACHE_MS = 10 * 60_000;
 const DEVICE_CACHE_MS = 60_000;
 const QUEUE_CACHE_MS = 30_000;
+const SPOTIFY_REQUEST_CONCURRENCY = 2;
+const GUEST_BUDGET_WINDOW_MS = 60_000;
 
 function waitText(seconds: number): string {
   const safe = Math.max(1, Math.ceil(seconds));
@@ -90,6 +93,11 @@ export class SpotifyClient {
   private readonly trackCache = new Map<string, { expires: number; track: Track }>();
   private deviceCache: { expires: number; devices: SpotifyDevice[] } | null = null;
   private nativeQueueCache: { expires: number; tracks: Track[] } | null = null;
+  private readonly guestRequestTimestamps: number[] = [];
+  private readonly trustedRequestWaiters: Array<() => void> = [];
+  private readonly guestRequestWaiters: Array<() => void> = [];
+  private activeWebApiRequests = 0;
+  private tokenRefreshInFlight: Promise<string> | null = null;
   private demoProgress = 30000;
 
   constructor(private readonly db: AppDatabase) {}
@@ -154,6 +162,50 @@ export class SpotifyClient {
       RATE_LIMIT_REASON_KEY,
       RATE_LIMIT_ATTEMPTS_KEY,
     );
+  }
+
+  private reserveGuestBudget(): void {
+    const now = Date.now();
+    while (this.guestRequestTimestamps[0] !== undefined && this.guestRequestTimestamps[0] <= now - GUEST_BUDGET_WINDOW_MS) {
+      this.guestRequestTimestamps.shift();
+    }
+    if (this.guestRequestTimestamps.length >= config.guestSpotifyRequestsPerMinute) {
+      const retryAfter = Math.max(1, Math.ceil((this.guestRequestTimestamps[0] + GUEST_BUDGET_WINDOW_MS - now) / 1000));
+      throw new SpotifyError(
+        `Zu viele Spotify-Anfragen von Gästen. Bitte in etwa ${waitText(retryAfter)} erneut versuchen.`,
+        429,
+        retryAfter,
+        "GUEST_SPOTIFY_BUDGET",
+      );
+    }
+    this.guestRequestTimestamps.push(now);
+  }
+
+  private acquireRequestSlot(priority: SpotifyRequestPriority): Promise<() => void> {
+    const queue = priority === "trusted" ? this.trustedRequestWaiters : this.guestRequestWaiters;
+    return new Promise((resolve) => {
+      const acquire = () => {
+        this.activeWebApiRequests += 1;
+        resolve(() => this.releaseRequestSlot());
+      };
+      if (this.activeWebApiRequests < SPOTIFY_REQUEST_CONCURRENCY && (priority === "trusted" || this.trustedRequestWaiters.length === 0)) acquire();
+      else queue.push(acquire);
+    });
+  }
+
+  private releaseRequestSlot(): void {
+    this.activeWebApiRequests = Math.max(0, this.activeWebApiRequests - 1);
+    const next = this.trustedRequestWaiters.shift() ?? this.guestRequestWaiters.shift();
+    next?.();
+  }
+
+  private async scheduledFetch(url: string, init: RequestInit, priority: SpotifyRequestPriority): Promise<Response> {
+    const release = await this.acquireRequestSlot(priority);
+    try {
+      return await fetch(url, { ...init, signal: init.signal ?? AbortSignal.timeout(10_000) });
+    } finally {
+      release();
+    }
   }
 
   private async errorFromResponse(response: Response, fallback: string): Promise<SpotifyError> {
@@ -269,18 +321,15 @@ export class SpotifyClient {
     return { accountId, displayName: profile.display_name ?? "Spotify Admin" };
   }
 
-  private async token(): Promise<string> {
-    const connection = this.connection();
-    if (!connection) throw new SpotifyError("Spotify ist nicht verbunden.", 401);
-    if (Date.parse(connection.access_expires_at) > Date.now() + 60000) return decrypt(connection.access_token);
-    const response = await fetch("https://accounts.spotify.com/api/token", {
+  private async refreshAccessToken(connection: TokenConnection, priority: SpotifyRequestPriority): Promise<string> {
+    const response = await this.scheduledFetch("https://accounts.spotify.com/api/token", {
       method: "POST",
       headers: {
         Authorization: `Basic ${Buffer.from(`${config.spotifyClientId}:${config.spotifyClientSecret}`).toString("base64")}`,
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: decrypt(connection.refresh_token) }),
-    });
+    }, priority);
     if (!response.ok) {
       const error = await this.errorFromResponse(response, "Spotify-Token konnte nicht erneuert werden.");
       if (error.reason === "invalid_grant") this.clearConnection();
@@ -294,16 +343,30 @@ export class SpotifyClient {
     return payload.access_token;
   }
 
-  private async request(path: string, init: RequestInit = {}, retry = true): Promise<Response> {
+  private async token(priority: SpotifyRequestPriority): Promise<string> {
+    const connection = this.connection();
+    if (!connection) throw new SpotifyError("Spotify ist nicht verbunden.", 401);
+    if (Date.parse(connection.access_expires_at) > Date.now() + 60000) return decrypt(connection.access_token);
+    if (this.tokenRefreshInFlight) return this.tokenRefreshInFlight;
+    const refresh = this.refreshAccessToken(connection, priority);
+    this.tokenRefreshInFlight = refresh;
+    try {
+      return await refresh;
+    } finally {
+      if (this.tokenRefreshInFlight === refresh) this.tokenRefreshInFlight = null;
+    }
+  }
+
+  private async request(path: string, init: RequestInit = {}, priority: SpotifyRequestPriority = "trusted", retry = true): Promise<Response> {
     this.assertNotRateLimited();
-    const token = await this.token();
-    const response = await fetch(`https://api.spotify.com/v1${path}`, {
+    const token = await this.token(priority);
+    const response = await this.scheduledFetch(`https://api.spotify.com/v1${path}`, {
       ...init,
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...init.headers },
-    });
+    }, priority);
     if (response.status === 401 && retry) {
       this.db.sqlite.prepare("UPDATE spotify_connection SET access_expires_at=? WHERE singleton=1").run(new Date(0).toISOString());
-      return this.request(path, init, false);
+      return this.request(path, init, priority, false);
     }
     if (!response.ok) {
       const fallback = response.status === 403
@@ -315,7 +378,7 @@ export class SpotifyClient {
     return response;
   }
 
-  async search(query: string, offset: number): Promise<SearchResult> {
+  async search(query: string, offset: number, priority: SpotifyRequestPriority = "trusted"): Promise<SearchResult> {
     const normalized = query.trim().slice(0, 100);
     if (normalized.length < 2) return { items: [], total: 0, nextOffset: null };
     if (config.demoMode) {
@@ -328,7 +391,9 @@ export class SpotifyClient {
     const pending = this.searchInFlight.get(key);
     if (pending) return pending;
     const request = (async () => {
-      const response = await this.request(`/search?${new URLSearchParams({ q: normalized, type: "track", limit: "10", offset: String(Math.max(0, offset)) })}`);
+      this.assertNotRateLimited();
+      if (priority === "guest") this.reserveGuestBudget();
+      const response = await this.request(`/search?${new URLSearchParams({ q: normalized, type: "track", limit: "10", offset: String(Math.max(0, offset)) })}`, {}, priority);
       const payload = await response.json() as any;
       const items = (payload.tracks?.items ?? [])
         .filter((item: any) => item?.is_playable !== false && !item?.is_local)
@@ -352,7 +417,7 @@ export class SpotifyClient {
     }
   }
 
-  async track(id: string): Promise<Track> {
+  async track(id: string, priority: SpotifyRequestPriority = "trusted"): Promise<Track> {
     if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) throw new SpotifyError("Ungültige Spotify-Song-ID.", 400);
     if (config.demoMode) {
       const track = DEMO_TRACKS.find((item) => item.id === id);
@@ -361,7 +426,9 @@ export class SpotifyClient {
     }
     const cached = this.trackCache.get(id);
     if (cached && cached.expires > Date.now()) return cached.track;
-    const response = await this.request(`/tracks/${encodeURIComponent(id)}`);
+    this.assertNotRateLimited();
+    if (priority === "guest") this.reserveGuestBudget();
+    const response = await this.request(`/tracks/${encodeURIComponent(id)}`, {}, priority);
     return this.rememberTrack(mapTrack(await response.json()));
   }
 

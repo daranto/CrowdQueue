@@ -7,9 +7,11 @@ import { SpotifyClient } from "../server/spotify.js";
 
 const originalFetch = globalThis.fetch;
 const originalDemoMode = config.demoMode;
+const originalGuestSpotifyRequestsPerMinute = config.guestSpotifyRequestsPerMinute;
 afterEach(() => {
   globalThis.fetch = originalFetch;
   config.demoMode = originalDemoMode;
+  config.guestSpotifyRequestsPerMinute = originalGuestSpotifyRequestsPerMinute;
 });
 
 function connectedDatabase(): AppDatabase {
@@ -150,6 +152,29 @@ describe("Spotify Admin-Login", () => {
     db.close();
   });
 
+  it("führt bei parallelen API-Aufrufen nur eine Token-Erneuerung aus", async () => {
+    config.demoMode = false;
+    const db = connectedDatabase();
+    db.sqlite.prepare("UPDATE spotify_connection SET access_expires_at = ? WHERE singleton = 1").run(new Date(0).toISOString());
+    let refreshRequests = 0;
+    globalThis.fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("accounts.spotify.com/api/token")) {
+        refreshRequests += 1;
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        return Response.json({ access_token: "shared-access", expires_in: 3600 });
+      }
+      if (url.endsWith("/me/player/devices")) return Response.json({ devices: [] });
+      if (url.includes("/search?")) return Response.json({ tracks: { items: [], total: 0, next: null } });
+      throw new Error(`Unerwarteter Spotify-Aufruf: ${url}`);
+    };
+
+    const spotify = new SpotifyClient(db);
+    await Promise.all([spotify.devices(true), spotify.search("parallele suche", 0, "guest")]);
+    assert.equal(refreshRequests, 1);
+    db.close();
+  });
+
   it("entfernt bei invalid_grant nur die defekte Verbindung und verlangt eine erneute Anmeldung", async () => {
     config.demoMode = false;
     const db = connectedDatabase();
@@ -200,6 +225,62 @@ describe("Spotify Admin-Login", () => {
     assert.equal(deviceRequests, 1);
     assert.equal(playerRequests, 2);
     assert.equal(queueRequests, 1);
+    db.close();
+  });
+
+  it("begrenzt nicht gecachte Gastzugriffe serverweit, ohne Admin-Aufrufe zu blockieren", async () => {
+    config.demoMode = false;
+    config.guestSpotifyRequestsPerMinute = 2;
+    const db = connectedDatabase();
+    let requests = 0;
+    globalThis.fetch = async () => {
+      requests += 1;
+      return Response.json({ tracks: { items: [], total: 0, next: null } });
+    };
+
+    const spotify = new SpotifyClient(db);
+    await spotify.search("gast eins", 0, "guest");
+    await spotify.search("gast zwei", 0, "guest");
+    await assert.rejects(() => spotify.track("noch-nicht-gecached", "guest"), (error: any) => {
+      assert.equal(error.status, 429);
+      assert.equal(error.reason, "GUEST_SPOTIFY_BUDGET");
+      assert.ok(error.retryAfter >= 59);
+      return true;
+    });
+    await spotify.search("admin bleibt frei", 0);
+    assert.equal(requests, 3, "nur zwei Gastzugriffe und der priorisierte Adminzugriff dürfen Spotify erreichen");
+    db.close();
+  });
+
+  it("zieht wartende Admin- und Controller-Aufrufe vor weiteren Gastsuchen vor", async () => {
+    config.demoMode = false;
+    config.guestSpotifyRequestsPerMinute = 10;
+    const db = connectedDatabase();
+    const order: string[] = [];
+    const delayed: Array<(response: Response) => void> = [];
+    globalThis.fetch = async (input) => {
+      const url = String(input);
+      order.push(url);
+      if (order.length <= 2) return new Promise<Response>((resolve) => delayed.push(resolve));
+      if (url.endsWith("/me/player/devices")) return Response.json({ devices: [] });
+      return Response.json({ tracks: { items: [], total: 0, next: null } });
+    };
+
+    const spotify = new SpotifyClient(db);
+    const firstGuest = spotify.search("erster gast", 0, "guest");
+    const secondGuest = spotify.search("zweiter gast", 0, "guest");
+    const waitingGuest = spotify.search("wartender gast", 0, "guest");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(order.length, 2, "höchstens zwei Spotify-Web-API-Aufrufe dürfen parallel laufen");
+
+    const trusted = spotify.devices(true);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    delayed.shift()?.(Response.json({ tracks: { items: [], total: 0, next: null } }));
+    await trusted;
+    assert.match(order[2], /\/me\/player\/devices$/, "der wartende vertrauenswürdige Aufruf muss zuerst starten");
+
+    delayed.shift()?.(Response.json({ tracks: { items: [], total: 0, next: null } }));
+    await Promise.all([firstGuest, secondGuest, waitingGuest]);
     db.close();
   });
 });

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { buildApp } from "../server/app.js";
+import { config } from "../server/config.js";
 import { SpotifyError } from "../server/spotify.js";
 
 const apps: Awaited<ReturnType<typeof buildApp>>[] = [];
@@ -10,7 +11,12 @@ describe("HTTP API", () => {
   it("stellt Healthcheck und Demo-Admin bereit", async () => {
     const app = await buildApp({ databasePath: ":memory:", logger: false });
     apps.push(app);
-    assert.equal((await app.inject({ url: "/healthz" })).statusCode, 200);
+    assert.equal((await app.inject({ url: "/healthz" })).statusCode, 404);
+    assert.equal((await app.inject({ url: "/healthz", headers: { authorization: "Bearer falscher-token" } })).statusCode, 404);
+    const health = await app.inject({ url: "/healthz", headers: { authorization: `Bearer ${config.healthcheckToken}` } });
+    assert.equal(health.statusCode, 200);
+    assert.deepEqual(health.json(), { ok: true });
+    assert.equal(health.headers["cache-control"], "no-store");
     const admin = await app.inject({ url: "/api/admin/state", headers: { "x-demo-admin": "true" } });
     assert.equal(admin.statusCode, 200);
     assert.equal(admin.json().authenticated, true);
@@ -56,11 +62,41 @@ describe("HTTP API", () => {
     assert.equal(response.statusCode, 403);
   });
 
+  it("lässt ohne Admin-Sitzung keinen Spotify-Steuer- oder Suchaufruf durch", async () => {
+    const app = await buildApp({ databasePath: ":memory:", logger: false });
+    apps.push(app);
+    let spotifyCalls = 0;
+    app.spotify.search = async () => {
+      spotifyCalls += 1;
+      return { items: [], total: 0, nextOffset: null };
+    };
+    app.spotify.control = async () => { spotifyCalls += 1; };
+    app.spotify.track = async () => {
+      spotifyCalls += 1;
+      throw new Error("darf nicht erreicht werden");
+    };
+    app.spotify.devices = async () => {
+      spotifyCalls += 1;
+      return [];
+    };
+
+    const responses = await Promise.all([
+      app.inject({ url: "/api/admin/search?q=test" }),
+      app.inject({ method: "POST", url: "/api/admin/player/pause" }),
+      app.inject({ method: "POST", url: "/api/admin/player/play-now", payload: { trackId: "track" } }),
+      app.inject({ method: "PUT", url: "/api/admin/parties/active/device", payload: { deviceId: "device" } }),
+    ]);
+    assert.deepEqual(responses.map((response) => response.statusCode), [401, 401, 401, 401]);
+    assert.equal(spotifyCalls, 0);
+  });
+
   it("verlangt das Setup-Token nur vor dem ersten hinterlegten Besitzer", async () => {
     const app = await buildApp({ databasePath: ":memory:", logger: false });
     apps.push(app);
     const initial = await app.inject({ url: "/api/admin/state" });
     assert.equal(initial.json().setupRequired, true);
+    assert.equal(initial.json().connected, undefined);
+    assert.equal(initial.json().spotifyRateLimit, undefined);
     assert.equal((await app.inject({ method: "GET", url: "/api/admin/spotify/login?setup_token=change-me" })).statusCode, 404);
     assert.equal((await app.inject({ method: "POST", url: "/api/admin/spotify/login", payload: {} })).statusCode, 403);
 

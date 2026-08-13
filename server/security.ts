@@ -34,6 +34,13 @@ export function verify(signed: string | undefined, purpose: string): string | nu
   return actual.length === expected.length && timingSafeEqual(actual, expected) ? value : null;
 }
 
+export function matchesSecret(actual: string | undefined, expected: string): boolean {
+  if (!actual) return false;
+  const actualBuffer = Buffer.from(actual);
+  const expectedBuffer = Buffer.from(expected);
+  return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
 export function randomToken(bytes = 24): string {
   return randomBytes(bytes).toString("base64url");
 }

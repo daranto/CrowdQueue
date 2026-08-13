@@ -15,7 +15,9 @@ export default defineConfig({
   ],
   webServer: {
     command: "NODE_ENV=test DEMO_MODE=true PORT=8091 HOST=127.0.0.1 DATABASE_PATH=./test-results/e2e.sqlite PUBLIC_BASE_URL=http://127.0.0.1:8091 LAN_BASE_URL=http://127.0.0.1:8091 node --experimental-sqlite dist-server/server/index.js",
-    url: "http://127.0.0.1:8091/healthz",
+    // Playwright unterstützt für den Bereitschafts-Poll keine eigenen Header.
+    // Der echte /healthz-Endpunkt bleibt deshalb auch in Tests token-geschützt.
+    url: "http://127.0.0.1:8091/",
     reuseExistingServer: false,
     timeout: 30000,
   },

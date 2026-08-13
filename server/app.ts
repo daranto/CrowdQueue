@@ -10,7 +10,7 @@ import { config } from "./config.js";
 import { QueueController } from "./controller.js";
 import { AppDatabase } from "./database.js";
 import { PartyEvents } from "./events.js";
-import { ipDigest, randomToken, sign, verify } from "./security.js";
+import { ipDigest, matchesSecret, randomToken, sign, verify } from "./security.js";
 import { SpotifyClient, SpotifyError } from "./spotify.js";
 import type { SpotifyDevice } from "./types.js";
 
@@ -206,9 +206,13 @@ export async function buildApp(options: AppOptions = {}) {
     };
   }
 
-  app.get("/healthz", async (_request, reply) => {
+  app.get("/healthz", { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } }, async (request, reply) => {
+    const authorization = request.headers.authorization;
+    const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined;
+    reply.header("Cache-Control", "no-store");
+    if (!matchesSecret(token, config.healthcheckToken)) return reply.code(404).send({ error: "Nicht gefunden." });
     db.sqlite.prepare("SELECT 1").get();
-    return reply.send({ ok: true, spotifyConfigured: spotify.isConfigured() });
+    return reply.send({ ok: true });
   });
 
   app.get<{ Params: { code: string } }>("/api/parties/:code/state", { config: { rateLimit: { max: 120, timeWindow: "1 minute" } } }, async (request, reply) => {
@@ -239,7 +243,7 @@ export async function buildApp(options: AppOptions = {}) {
   app.get<{ Params: { code: string }; Querystring: { q?: string; offset?: string } }>("/api/parties/:code/search", { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } }, async (request, reply) => {
     const party = partyForCode(request.params.code, request, reply);
     if (!party || !Number(party.active)) return reply.code(410).send({ error: "Diese Party ist bereits beendet." });
-    const result = await spotify.search(request.query.q ?? "", safeOffset(request.query.offset));
+    const result = await spotify.search(request.query.q ?? "", safeOffset(request.query.offset), "guest");
     return reply.send(result);
   });
 
@@ -249,7 +253,7 @@ export async function buildApp(options: AppOptions = {}) {
     if (!Number(party.active)) return reply.code(410).send({ error: "Diese Party ist bereits beendet." });
     if (!enforcePartyOrigin(request, reply, String(party.guest_origin))) return;
     try {
-      const track = await spotify.track(String(request.body?.trackId ?? ""));
+      const track = await spotify.track(String(request.body?.trackId ?? ""), "guest");
       const result = db.requestTrack(Number(party.id), request.guestDeviceId, track);
       events.publish(Number(party.id));
       return reply.code(result.added ? 201 : 200).send(result);
@@ -277,9 +281,7 @@ export async function buildApp(options: AppOptions = {}) {
     if (!session) return reply.send({
       authenticated: false,
       configured: spotify.isConfigured(),
-      connected: spotify.isConnected(),
       setupRequired: !db.getSetting("owner_account_id"),
-      spotifyRateLimit: spotify.rateLimitInfo(),
       demoMode: config.demoMode,
     });
     let devices: SpotifyDevice[] = [];

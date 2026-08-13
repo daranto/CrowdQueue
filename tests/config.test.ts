@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { validateSpotifyRedirectUri } from "../server/config.js";
+import { validateDemoMode, validateSpotifyRedirectUri } from "../server/config.js";
 
 describe("Spotify Redirect URI", () => {
   it("akzeptiert HTTPS und die expliziten Loopback-Ausnahmen", () => {
@@ -24,5 +24,14 @@ describe("Spotify Redirect URI", () => {
     assert.throws(() => validateSpotifyRedirectUri("https://*.example.com/callback"), /Wildcards/);
     assert.throws(() => validateSpotifyRedirectUri("https://user:secret@example.com/callback"), /Zugangsdaten/);
     assert.throws(() => validateSpotifyRedirectUri("keine-url"), /gültige absolute URL/);
+  });
+});
+
+describe("Demo-Modus", () => {
+  it("ist in Entwicklung und Tests, aber niemals in Produktion erlaubt", () => {
+    assert.equal(validateDemoMode(true, "development"), true);
+    assert.equal(validateDemoMode(true, "test"), true);
+    assert.equal(validateDemoMode(false, "production"), false);
+    assert.throws(() => validateDemoMode(true, "production"), /darf in Produktion nicht aktiviert/);
   });
 });

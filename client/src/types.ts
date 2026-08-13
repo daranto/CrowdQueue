@@ -49,7 +49,7 @@ export interface PartyState {
 export interface AdminState {
   authenticated: boolean;
   configured: boolean;
-  connected: boolean;
+  connected?: boolean;
   setupRequired?: boolean;
   demoMode: boolean;
   csrfToken?: string;

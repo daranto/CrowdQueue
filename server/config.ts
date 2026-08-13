@@ -44,11 +44,17 @@ export function validateSpotifyRedirectUri(value: string): string {
   return value;
 }
 
+export function validateDemoMode(value: boolean, nodeEnv: string): boolean {
+  if (value && nodeEnv === "production") throw new Error("DEMO_MODE darf in Produktion nicht aktiviert sein.");
+  return value;
+}
+
 const databasePath = resolve(env("DATABASE_PATH", "./data/crowdqueue.sqlite"));
 mkdirSync(dirname(databasePath), { recursive: true });
+const nodeEnv = env("NODE_ENV", "development");
 
 export const config = {
-  nodeEnv: env("NODE_ENV", "development"),
+  nodeEnv,
   host: env("HOST", "0.0.0.0"),
   port: Number(env("PORT", "8080")),
   databasePath,
@@ -60,8 +66,10 @@ export const config = {
   sessionSecret: secret("SESSION_SECRET", "dev-session-secret-change-me-please-32"),
   encryptionKey: secret("ENCRYPTION_KEY", "dev-encryption-key-change-me-32bytes"),
   adminSetupToken: secret("ADMIN_SETUP_TOKEN", "change-me", 24),
+  healthcheckToken: secret("HEALTHCHECK_TOKEN", "dev-healthcheck-token-change-me-32", 32),
   trustProxy: proxyTrust(env("TRUST_PROXY", "false")),
-  demoMode: env("DEMO_MODE", "false") === "true",
+  demoMode: validateDemoMode(env("DEMO_MODE", "false") === "true", nodeEnv),
+  guestSpotifyRequestsPerMinute: Math.max(1, Number(env("GUEST_SPOTIFY_REQUESTS_PER_MINUTE", "20")) || 20),
   // Spotify zählt alle Web-API-Aufrufe in ein gemeinsames Kontingent. Zehn
   // Sekunden reichen für das 30-Sekunden-Lockfenster und vermeiden unnötiges Polling.
   controllerIntervalMs: Math.max(10000, Number(env("CONTROLLER_INTERVAL_MS", "10000")) || 10000),
