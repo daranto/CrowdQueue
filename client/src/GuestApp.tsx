@@ -198,41 +198,41 @@ export function GuestApp({ code }: { code: string }) {
           <p>Hier entsteht eure Setlist – Song suchen, wünschen und gemeinsam nach oben voten.</p>
         </div>
 
-        <div className="guest-stage">
-          <div className="guest-stage__primary">
-            <section className="now-playing" aria-labelledby="now-title">
-              <span className="now-playing__on-air" aria-hidden="true"><i />On Air</span>
-              <div className="section-kicker" id="now-title">Läuft gerade</div>
-              {state?.nowPlaying ? (
-                <>
-                  <a href={state.nowPlaying.spotifyUrl} target="_blank" rel="noreferrer"><Artwork track={state.nowPlaying} size="hero" /></a>
-                  <div className="now-playing__content">
-                    <TrackMeta track={state.nowPlaying} />
-                    <div className="progress" role="progressbar" aria-label="Fortschritt des laufenden Songs" aria-valuemin={0} aria-valuemax={state.nowPlaying.durationMs} aria-valuenow={estimatedProgressMs}>
-                      <span style={{ width: `${progress}%` }} />
-                    </div>
-                    <div className="progress-label"><span>{formatTime(estimatedProgressMs)}</span><span>−{formatTime(state.nowPlaying.durationMs - estimatedProgressMs)}</span></div>
-                    <div className="device-label"><span aria-hidden="true">●</span>{state.player.deviceName ?? "Kein aktives Gerät"}</div>
-                    <SpotifyLink href={state.nowPlaying.spotifyUrl} />
+        <div className={`guest-stage ${state?.lockedNext ? "guest-stage--with-next" : ""}`}>
+          <section className={`now-playing ${state?.lockedNext ? "now-playing--with-next" : ""}`} aria-labelledby="now-title">
+            <span className="now-playing__on-air" aria-hidden="true"><i />On Air</span>
+            <div className="section-kicker" id="now-title">Läuft gerade</div>
+            {state?.nowPlaying ? (
+              <>
+                <a href={state.nowPlaying.spotifyUrl} target="_blank" rel="noreferrer"><Artwork track={state.nowPlaying} size="hero" /></a>
+                <div className="now-playing__content">
+                  <TrackMeta track={state.nowPlaying} />
+                  <div className="progress" role="progressbar" aria-label="Fortschritt des laufenden Songs" aria-valuemin={0} aria-valuemax={state.nowPlaying.durationMs} aria-valuenow={estimatedProgressMs}>
+                    <span style={{ width: `${progress}%` }} />
                   </div>
-                </>
-              ) : <EmptyState title="Noch spielt nichts">Starte Spotify auf dem Party-Gerät. Sobald Musik läuft, erscheint sie hier.</EmptyState>}
-            </section>
-
-            {state?.lockedNext && (
-              <section className="locked-card" aria-labelledby="locked-title">
-                <div>
-                  <span className="section-kicker" id="locked-title">Als Nächstes · fest eingeplant</span>
-                  <TrackMeta track={state.lockedNext} compact />
+                  <div className="progress-label"><span>{formatTime(estimatedProgressMs)}</span><span>−{formatTime(state.nowPlaying.durationMs - estimatedProgressMs)}</span></div>
+                  <div className="device-label"><span aria-hidden="true">●</span>{state.player.deviceName ?? "Kein aktives Gerät"}</div>
+                  <SpotifyLink href={state.nowPlaying.spotifyUrl} />
                 </div>
-                <span className="locked-card__status" aria-label="Bereits an Spotify übergeben">
+              </>
+            ) : <EmptyState title="Noch spielt nichts">Starte Spotify auf dem Party-Gerät. Sobald Musik läuft, erscheint sie hier.</EmptyState>}
+            {state?.lockedNext && (
+              <aside className="now-playing__next" aria-labelledby="locked-title">
+                <span className="section-kicker" id="locked-title">Als Nächstes</span>
+                <a href={state.lockedNext.spotifyUrl} target="_blank" rel="noreferrer" aria-label={`${state.lockedNext.name} auf Spotify öffnen`}><Artwork track={state.lockedNext} size="small" /></a>
+                <TrackMeta track={state.lockedNext} compact />
+                <span className="now-playing__next-state">
                   <svg viewBox="0 0 32 32" aria-hidden="true">
                     <path d="M5 8h12M5 16h9M5 24h7" />
                     <path d="M18 16h8m-4-4 4 4-4 4" />
                   </svg>
+                  Fest eingeplant
                 </span>
-              </section>
+              </aside>
             )}
+          </section>
+
+          <div className="guest-stage__primary">
 
             <section className="search-panel" aria-labelledby="search-title">
               <div className="section-title-row"><div><span className="section-kicker">Dein Musikwunsch</span><h2 id="search-title">Song finden</h2></div><span>{remainingRequests === 0 ? "Kein Wunsch mehr frei" : `${remainingRequests} ${remainingRequests === 1 ? "Wunsch" : "Wünsche"} frei`}</span></div>

@@ -52,6 +52,61 @@ test("Leerer Wiedergabestatus nutzt mobil die gesamte Karte", async ({ page, req
   expect(layout.width).toBeGreaterThan(layout.parentWidth * 0.8);
 });
 
+test("Fest eingeplanter Track bleibt in derselben Player-Karte", async ({ page, request }) => {
+  const response = await request.get("/api/admin/state", { headers: { "x-demo-admin": "true" } });
+  const admin = await response.json();
+  await page.route(`**/api/parties/${admin.party.party.code}/state`, async (route) => {
+    const stateResponse = await route.fetch();
+    const partyState = await stateResponse.json();
+    await route.fulfill({
+      response: stateResponse,
+      json: {
+        ...partyState,
+        lockedNext: {
+          id: "demo-2",
+          uri: "spotify:track:demo-2",
+          name: "Dance The Night",
+          artists: "Dua Lipa",
+          album: "Barbie The Album",
+          imageUrl: null,
+          spotifyUrl: "https://open.spotify.com",
+          durationMs: 176000,
+          explicit: false,
+        },
+      },
+    });
+  });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/p/${admin.party.party.code}`);
+
+  const player = page.locator(".now-playing");
+  const next = player.locator(".now-playing__next");
+  await expect(next.getByText("Dance The Night")).toBeVisible();
+  await expect(page.locator(".locked-card")).toHaveCount(0);
+
+  const desktop = await page.evaluate(() => {
+    const currentRect = document.querySelector(".now-playing__content")?.getBoundingClientRect();
+    const nextRect = document.querySelector(".now-playing__next")?.getBoundingClientRect();
+    return { currentX: currentRect?.x ?? 0, nextX: nextRect?.x ?? 0 };
+  });
+  expect(desktop.nextX).toBeGreaterThan(desktop.currentX);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobile = await page.evaluate(() => {
+    const currentRect = document.querySelector(".now-playing__content")?.getBoundingClientRect();
+    const nextRect = document.querySelector(".now-playing__next")?.getBoundingClientRect();
+    return {
+      currentY: currentRect?.y ?? 0,
+      nextY: nextRect?.y ?? 0,
+      viewportWidth: window.innerWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    };
+  });
+  expect(mobile.nextY).toBeGreaterThan(mobile.currentY);
+  expect(mobile.scrollWidth).toBeLessThanOrEqual(mobile.viewportWidth);
+});
+
 test("Gast kann mobil suchen, wünschen und voten", async ({ page, request }) => {
   const response = await request.get("/api/admin/state", { headers: { "x-demo-admin": "true" } });
   const admin = await response.json();
