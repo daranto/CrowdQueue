@@ -201,6 +201,7 @@ export function GuestApp({ code }: { code: string }) {
         <div className="guest-stage">
           <div className="guest-stage__primary">
             <section className="now-playing" aria-labelledby="now-title">
+              <span className="now-playing__on-air" aria-hidden="true"><i />On Air</span>
               <div className="section-kicker" id="now-title">Läuft gerade</div>
               {state?.nowPlaying ? (
                 <>
