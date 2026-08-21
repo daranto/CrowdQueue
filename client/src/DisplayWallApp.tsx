@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { api } from "./api";
 import { Artwork, ExplicitBadge } from "./components";
 import type { PartyState, Track } from "./types";
@@ -14,6 +14,8 @@ interface WallCue {
 
 const MAX_RESPONSIVE_CUES = 6;
 const WALL_PROGRESS_ARC_DEGREES = 360;
+const MIN_WALL_COPY_SCALE = 0.16;
+const MIN_WALL_COPY_HEIGHT = 72;
 
 function buildCues(state: PartyState): WallCue[] {
   const cues: WallCue[] = [];
@@ -41,6 +43,11 @@ export function DisplayWallApp({ code }: { code: string }) {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [cueCapacity, setCueCapacity] = useState(3);
   const lineupRef = useRef<HTMLElement>(null);
+  const wallLayoutRef = useRef<HTMLDivElement>(null);
+  const wallArtRingRef = useRef<HTMLDivElement>(null);
+  const wallCopyRef = useRef<HTMLDivElement>(null);
+  const wallTitleRef = useRef<HTMLHeadingElement>(null);
+  const wallArtistRef = useRef<HTMLParagraphElement>(null);
   const currentTrackTransition = useTrackTransition(state?.nowPlaying ?? null);
 
   const load = useCallback(async () => {
@@ -148,6 +155,95 @@ export function DisplayWallApp({ code }: { code: string }) {
     };
   }, [cues.length, qrDataUrl]);
 
+  useLayoutEffect(() => {
+    const layout = wallLayoutRef.current;
+    const artRing = wallArtRingRef.current;
+    const copy = wallCopyRef.current;
+    const title = wallTitleRef.current;
+    const artist = wallArtistRef.current;
+    if (!layout || !artRing || !copy || !title || !artist || !renderedNowPlaying) return;
+
+    let active = true;
+    let frame = 0;
+    const fitCopy = () => {
+      if (!active) return;
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        if (!active) return;
+        copy.style.removeProperty("--wall-copy-fit-top");
+        copy.style.removeProperty("--wall-title-fit-size");
+        copy.style.removeProperty("--wall-artist-fit-size");
+
+        const copyStyle = window.getComputedStyle(copy);
+        const artStyle = window.getComputedStyle(artRing);
+        const titleSize = Number.parseFloat(window.getComputedStyle(title).fontSize);
+        const artistSize = Number.parseFloat(window.getComputedStyle(artist).fontSize);
+        const progressInset = Number.parseFloat(artStyle.getPropertyValue("--wall-progress-inset"));
+        const progressGap = Number.parseFloat(copyStyle.getPropertyValue("--wall-copy-progress-gap"));
+        const edgeGap = Number.parseFloat(copyStyle.getPropertyValue("--wall-copy-edge-gap"));
+        const insetRatio = Number.isFinite(progressInset) ? progressInset / 100 : 0.27;
+        const gap = Number.isFinite(progressGap) ? progressGap : 24;
+        const minimumTop = Number.isFinite(edgeGap) ? edgeGap : 24;
+        const progressTop = artRing.offsetTop - artRing.offsetHeight / 2 + artRing.offsetHeight * insetRatio;
+        const desiredTop = copy.offsetTop;
+        const fittedTop = Math.max(minimumTop, Math.min(desiredTop, progressTop - gap - MIN_WALL_COPY_HEIGHT));
+        const safeHeight = Math.max(1, progressTop - fittedTop - gap);
+
+        copy.style.setProperty("--wall-copy-fit-top", `${fittedTop}px`);
+        copy.style.setProperty("--wall-copy-safe-height", `${safeHeight}px`);
+
+        const applyScale = (scale: number) => {
+          copy.style.setProperty("--wall-title-fit-size", `${titleSize * scale}px`);
+          copy.style.setProperty("--wall-artist-fit-size", `${artistSize * scale}px`);
+        };
+        const fits = () => {
+          const copyBounds = copy.getBoundingClientRect();
+          const titleBounds = title.getBoundingClientRect();
+          const artistBounds = artist.getBoundingClientRect();
+          return Math.max(titleBounds.bottom, artistBounds.bottom) <= copyBounds.bottom
+            && Math.min(titleBounds.left, artistBounds.left) >= copyBounds.left
+            && Math.max(titleBounds.right, artistBounds.right) <= copyBounds.right;
+        };
+
+        let fittedScale = 1;
+        applyScale(fittedScale);
+        if (!fits()) {
+          let lower = MIN_WALL_COPY_SCALE;
+          let upper = 1;
+          applyScale(lower);
+          for (let iteration = 0; iteration < 12; iteration += 1) {
+            const candidate = (lower + upper) / 2;
+            applyScale(candidate);
+            if (fits()) lower = candidate;
+            else upper = candidate;
+          }
+          fittedScale = lower;
+          applyScale(fittedScale);
+        }
+        copy.dataset.fitScale = fittedScale.toFixed(3);
+      });
+    };
+
+    const resizeObserver = new ResizeObserver(fitCopy);
+    const contentObserver = new MutationObserver(fitCopy);
+    resizeObserver.observe(layout);
+    resizeObserver.observe(artRing);
+    contentObserver.observe(copy, { childList: true, characterData: true, subtree: true });
+    void document.fonts.ready.then(fitCopy);
+    document.fonts.addEventListener("loadingdone", fitCopy);
+    window.addEventListener("resize", fitCopy);
+    fitCopy();
+
+    return () => {
+      active = false;
+      resizeObserver.disconnect();
+      contentObserver.disconnect();
+      document.fonts.removeEventListener("loadingdone", fitCopy);
+      window.removeEventListener("resize", fitCopy);
+      window.cancelAnimationFrame(frame);
+    };
+  }, [renderedNowPlaying]);
+
   if (loading) {
     return <main id="main" className="display-wall display-wall--message"><span className="display-wall__pulse" /><p>Display Wall wird verbunden …</p></main>;
   }
@@ -178,18 +274,19 @@ export function DisplayWallApp({ code }: { code: string }) {
             </div>
             {renderedNowPlaying ? (
               <div
+                ref={wallLayoutRef}
                 className={`wall-now__layout now-track-transition--${currentTrackTransition.phase}`}
                 key={renderedNowPlaying.id}
                 onAnimationEnd={currentTrackTransition.onAnimationEnd}
               >
-                <div className="wall-now__art-ring" role="progressbar" aria-label="Fortschritt des laufenden Songs" aria-valuemin={0} aria-valuemax={renderedNowPlaying.durationMs} aria-valuenow={Math.round(renderedProgressMs)}>
+                <div ref={wallArtRingRef} className="wall-now__art-ring" role="progressbar" aria-label="Fortschritt des laufenden Songs" aria-valuemin={0} aria-valuemax={renderedNowPlaying.durationMs} aria-valuenow={Math.round(renderedProgressMs)}>
                   <div className={`wall-now__vinyl ${state.player.isPlaying ? "wall-now__vinyl--spinning" : "wall-now__vinyl--paused"}`}>
                     <Artwork track={renderedNowPlaying} size="hero" />
                   </div>
                 </div>
-                <div className={`wall-now__copy ${renderedNowPlaying.name.length > 30 || renderedNowPlaying.artists.length > 42 ? "wall-now__copy--dense" : ""}`}>
-                  <h1 id="wall-current-title">{renderedNowPlaying.name} {renderedNowPlaying.explicit && <ExplicitBadge />}</h1>
-                  <p>{renderedNowPlaying.artists}</p>
+                <div ref={wallCopyRef} className="wall-now__copy">
+                  <h1 ref={wallTitleRef} id="wall-current-title">{renderedNowPlaying.name} {renderedNowPlaying.explicit && <ExplicitBadge />}</h1>
+                  <p ref={wallArtistRef}>{renderedNowPlaying.artists}</p>
                 </div>
               </div>
             ) : (

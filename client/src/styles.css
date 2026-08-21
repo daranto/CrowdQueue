@@ -468,7 +468,7 @@ button:disabled { opacity: .46; cursor: not-allowed; transform: none !important;
 .display-wall__party strong { min-width: 0; overflow: hidden; padding-left: .65rem; border-left: 1px solid rgba(255, 255, 255, .17); color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
 .display-wall__stage { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.22fr) minmax(360px, .78fr); gap: clamp(1rem, 1.8vw, 1.75rem); }
 
-.wall-now { --wall-copy-left: clamp(2.2rem, 6vw, 5.8rem); --wall-copy-top: clamp(2rem, calc(16vh - 5rem), 7rem); position: relative; isolation: isolate; min-width: 0; min-height: 0; overflow: hidden; display: grid; grid-template-rows: auto minmax(0, 1fr); padding: clamp(1.2rem, 2vw, 2.2rem); border: 1px solid #514a7b; border-radius: clamp(1.25rem, 2.1vw, 2rem); background: linear-gradient(145deg, rgba(49, 43, 95, .87), rgba(25, 22, 54, .91) 75%); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); box-shadow: 0 28px 75px rgba(6, 4, 28, .38); }
+.wall-now { --wall-copy-left: clamp(2.5rem, 5vw, 5rem); --wall-copy-right: clamp(2.5rem, 5vw, 5rem); --wall-copy-top: clamp(2rem, 4.5vh, 4.5rem); --wall-copy-edge-gap: 24px; --wall-copy-progress-gap: 24px; --wall-title-base-size: clamp(2.65rem, 4.4vw, 5.8rem); --wall-artist-base-size: clamp(.95rem, 1.45vw, 1.45rem); position: relative; isolation: isolate; min-width: 0; min-height: 0; overflow: hidden; display: grid; grid-template-rows: auto minmax(0, 1fr); padding: clamp(1.2rem, 2vw, 2.2rem); border: 1px solid #514a7b; border-radius: clamp(1.25rem, 2.1vw, 2rem); background: linear-gradient(145deg, rgba(49, 43, 95, .87), rgba(25, 22, 54, .91) 75%); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); box-shadow: 0 28px 75px rgba(6, 4, 28, .38); }
 .wall-now::before { content: ""; position: absolute; z-index: 0; width: min(58vw, 860px); aspect-ratio: 1; left: -24%; bottom: -30%; pointer-events: none; border-radius: 50%; opacity: .68; background: conic-gradient(from 35deg, rgba(143, 124, 255, .14), transparent 19% 46%, rgba(255, 116, 72, .11) 55%, transparent 68% 88%, rgba(143, 124, 255, .12)); filter: blur(52px); animation: wall-ambient-orbit 16s ease-in-out infinite alternate; will-change: transform; }
 .wall-now > * { position: relative; z-index: 1; }
 .wall-now__status { position: relative; z-index: 4; display: flex; align-items: center; justify-content: flex-end; }
@@ -485,11 +485,10 @@ button:disabled { opacity: .46; cursor: not-allowed; transform: none !important;
 .wall-now__vinyl--spinning { animation: wall-record-spin 2.7s linear infinite; }
 .wall-now__vinyl--paused { animation: none; }
 .wall-now__vinyl .artwork--hero { position: relative; z-index: 1; width: 43%; height: 43%; border: clamp(4px, .45vw, 7px) solid #17142f; border-radius: 50%; box-shadow: 0 0 0 1px rgba(255, 255, 255, .2), 0 12px 35px rgba(3, 2, 15, .48); }
-.wall-now__copy { position: relative; z-index: 3; align-self: start; min-width: 0; width: min(80%, 1080px); margin: var(--wall-copy-top) auto 0 var(--wall-copy-left); padding: 0; text-align: left; text-shadow: 0 3px 22px rgba(9, 7, 30, .82), 0 1px 3px rgba(9, 7, 30, .95); }
-.wall-now__copy--dense { margin-top: 1rem; transform: translateY(clamp(-5rem, calc(7rem - 18vh), -1.5rem)); }
-.wall-now__copy h1 { overflow: visible; margin: 0 0 clamp(.55rem, 1vw, .85rem); padding-bottom: .12em; color: var(--ink); font-size: clamp(2.65rem, 4.4vw, 5.8rem); line-height: 1.02; letter-spacing: -.062em; overflow-wrap: break-word; word-break: normal; text-wrap: balance; }
+.wall-now__copy { position: absolute; z-index: 3; top: var(--wall-copy-fit-top, var(--wall-copy-top)); right: var(--wall-copy-right); left: var(--wall-copy-left); min-width: 0; height: var(--wall-copy-safe-height, auto); margin: 0; padding: 0; overflow: hidden; text-align: left; text-shadow: 0 3px 22px rgba(9, 7, 30, .82), 0 1px 3px rgba(9, 7, 30, .95); }
+.wall-now__copy h1 { overflow: visible; margin: 0 0 clamp(.55rem, 1vw, .85rem); padding-bottom: .12em; color: var(--ink); font-size: var(--wall-title-fit-size, var(--wall-title-base-size)); line-height: 1.02; letter-spacing: -.062em; overflow-wrap: normal; word-break: normal; text-wrap: balance; }
 .wall-now__copy h1 .explicit { vertical-align: .2em; }
-.wall-now__copy > p { display: -webkit-box; overflow: hidden; margin: 0; color: #d6d1e2; font-size: clamp(.95rem, 1.45vw, 1.45rem); line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.wall-now__copy > p { overflow: visible; margin: 0; color: #d6d1e2; font-size: var(--wall-artist-fit-size, var(--wall-artist-base-size)); line-height: 1.45; overflow-wrap: normal; word-break: normal; text-wrap: balance; }
 .wall-now__empty { min-height: 100%; display: flex; align-items: center; justify-content: center; gap: 1.2rem; color: var(--muted); text-align: left; }
 .wall-now__empty > span { width: clamp(62px, 7vw, 100px); aspect-ratio: 1; display: grid; place-items: center; flex: 0 0 auto; border: 1px solid rgba(143, 124, 255, .44); border-radius: 50%; color: var(--accent); font-size: clamp(1.5rem, 3vw, 2.4rem); }
 .wall-now__empty h1 { margin: 0 0 .5rem; color: var(--ink); font-size: clamp(2.2rem, 4.5vw, 5rem); }
@@ -572,10 +571,8 @@ button:disabled { opacity: .46; cursor: not-allowed; transform: none !important;
   .display-wall-page { overflow: auto; }
   .display-wall { min-height: 100dvh; height: auto; }
   .display-wall__stage { grid-template-columns: 1fr; }
-  .wall-now { --wall-copy-left: clamp(2rem, 7vw, 4rem); --wall-copy-top: clamp(1.25rem, 3vh, 2rem); min-height: 480px; }
+  .wall-now { --wall-copy-left: clamp(2rem, 7vw, 4rem); --wall-copy-right: clamp(2rem, 7vw, 4rem); --wall-copy-top: clamp(2.75rem, 7vh, 4.5rem); --wall-copy-edge-gap: 20px; --wall-copy-progress-gap: 18px; min-height: 480px; }
   .wall-now__art-ring { top: 55%; width: clamp(35rem, min(132%, 96vh), 58rem); }
-  .wall-now__copy { width: 80%; margin: var(--wall-copy-top) auto 0 var(--wall-copy-left); }
-  .wall-now__copy--dense { transform: translateY(-1.5rem); }
   .wall-lineup { min-height: 440px; }
   .wall-lineup__scan img, .wall-lineup__scan > i { width: clamp(240px, 38vw, 300px); }
   .wall-lineup__invite > img, .wall-lineup__qr-placeholder { width: min(58%, 320px); }
@@ -643,12 +640,10 @@ button:disabled { opacity: .46; cursor: not-allowed; transform: none !important;
   .display-wall__header { grid-template-columns: minmax(0, 1fr) auto; gap: .75rem; }
   .display-wall__party { grid-column: 1 / -1; grid-row: 2; justify-content: flex-start; }
   .wall-brand .brand__mark { width: 29px; height: 29px; }
-  .wall-now { --wall-copy-left: 1.1rem; --wall-copy-top: 1rem; min-height: 400px; padding: 1rem; }
+  .wall-now { --wall-copy-left: 1.25rem; --wall-copy-right: 1.25rem; --wall-copy-top: 2.25rem; --wall-copy-edge-gap: 16px; --wall-copy-progress-gap: 16px; --wall-title-base-size: clamp(1.55rem, 8vw, 2.6rem); --wall-artist-base-size: .72rem; min-height: 400px; padding: 1rem; }
   .wall-now__art-ring { --wall-progress-width: 6px; top: 59%; left: -46%; width: clamp(430px, 138vw, 540px); padding: var(--wall-progress-width); }
-  .wall-now__copy { width: calc(100% - 2.2rem); margin: var(--wall-copy-top) 0 0 var(--wall-copy-left); padding: 0; }
   .wall-now__vinyl .artwork--hero { border-radius: 50%; }
-  .wall-now__copy h1 { margin-bottom: .6rem; font-size: clamp(1.55rem, 8vw, 2.6rem); -webkit-line-clamp: 3; }
-  .wall-now__copy > p { font-size: .72rem; -webkit-line-clamp: 2; }
+  .wall-now__copy h1 { margin-bottom: .6rem; }
   .wall-lineup { min-height: 330px; padding: 1rem; }
   .wall-lineup__heading h2 { font-size: 1.6rem; }
   .wall-lineup__heading > span { min-width: 38px; height: 38px; }
@@ -699,8 +694,8 @@ button:disabled { opacity: .46; cursor: not-allowed; transform: none !important;
   .display-wall { padding-top: 1rem; padding-bottom: 1rem; gap: .8rem; }
   .display-wall__header { padding-bottom: .7rem; }
   .wall-now, .wall-lineup { padding: 1rem; }
+  .wall-now { --wall-copy-top: clamp(1.5rem, 3.5vh, 2.25rem); --wall-title-base-size: clamp(2.4rem, 4vw, 4.5rem); }
   .wall-now__art-ring { left: -25%; width: min(92%, 108vh); }
-  .wall-now__copy h1 { font-size: clamp(2rem, 3.5vw, 3.8rem); }
   .wall-lineup__item { min-height: 58px; }
   .wall-lineup__scan img, .wall-lineup__scan > i { width: 210px; }
 }

@@ -440,21 +440,55 @@ test("Display Wall zeigt ausschließlich Musikwünsche und passt sich dem Bildsc
   expect(desktopLayout.copySitsAboveCoverCenter).toBeTruthy();
   expect(desktopLayout.copyLayer).toBeGreaterThan(desktopLayout.vinylLayer);
   expect(desktopLayout.scrollWidth).toBeLessThanOrEqual(desktopLayout.width);
-  const longArtistClearance = await page.evaluate(() => {
-    const vinyl = document.querySelector(".wall-now__art-ring")?.getBoundingClientRect();
-    const cover = document.querySelector<HTMLElement>(".wall-now__vinyl .artwork--hero");
+  await page.evaluate(() => {
+    const title = document.querySelector<HTMLElement>(".wall-now__copy h1");
     const artist = document.querySelector<HTMLElement>(".wall-now__copy > p");
-    const copy = document.querySelector<HTMLElement>(".wall-now__copy");
+    if (title) title.textContent = "Everytime We Touch – TEKKNO Version – The Extended Midnight Celebration Remix";
     if (artist) artist.textContent = "Roy Bianco & Die Abbrunzati Boys · Electric Callboy · Florence + The Machine";
-    copy?.classList.add("wall-now__copy--dense");
-    const artistBounds = artist?.getBoundingClientRect();
-    const coverTop = vinyl && cover ? vinyl.top + (vinyl.height - cover.offsetHeight) / 2 : 0;
+    window.dispatchEvent(new Event("resize"));
+  });
+  await expect.poll(() => page.evaluate(() => {
+    const vinyl = document.querySelector<HTMLElement>(".wall-now__art-ring");
+    const title = document.querySelector<HTMLElement>(".wall-now__copy h1");
+    const artist = document.querySelector<HTMLElement>(".wall-now__copy > p");
+    if (!vinyl || !title || !artist) return -1;
+    const vinylBounds = vinyl.getBoundingClientRect();
+    const insetRatio = Number.parseFloat(getComputedStyle(vinyl).getPropertyValue("--wall-progress-inset")) / 100;
+    const progressTop = vinylBounds.top + vinylBounds.height * insetRatio;
+    return progressTop - Math.max(title.getBoundingClientRect().bottom, artist.getBoundingClientRect().bottom);
+  })).toBeGreaterThan(16);
+  const longCopySafety = await page.evaluate(() => {
+    const layout = document.querySelector(".wall-now__layout")?.getBoundingClientRect();
+    const vinyl = document.querySelector<HTMLElement>(".wall-now__art-ring");
+    const copy = document.querySelector<HTMLElement>(".wall-now__copy");
+    const title = document.querySelector<HTMLElement>(".wall-now__copy h1");
+    const artist = document.querySelector<HTMLElement>(".wall-now__copy > p");
+    if (!layout || !vinyl || !copy || !title || !artist) return null;
+    const vinylBounds = vinyl.getBoundingClientRect();
+    const copyBounds = copy.getBoundingClientRect();
+    const titleBounds = title.getBoundingClientRect();
+    const artistBounds = artist.getBoundingClientRect();
+    const style = getComputedStyle(vinyl);
+    const insetRatio = Number.parseFloat(style.getPropertyValue("--wall-progress-inset")) / 100;
+    const progressTop = vinylBounds.top + vinylBounds.height * insetRatio;
     return {
-      artistBottom: artistBounds?.bottom ?? 0,
-      coverTop,
+      fitScale: Number.parseFloat(copy.dataset.fitScale ?? "1"),
+      leftGap: copyBounds.left - layout.left,
+      rightGap: layout.right - copyBounds.right,
+      topGap: copyBounds.top - layout.top,
+      progressGap: progressTop - Math.max(titleBounds.bottom, artistBounds.bottom),
+      contentFitsHeight: copy.scrollHeight <= copy.clientHeight + 1,
+      contentFitsWidth: copy.scrollWidth <= copy.clientWidth + 1,
     };
   });
-  expect(longArtistClearance.artistBottom).toBeLessThan(longArtistClearance.coverTop);
+  expect(longCopySafety).not.toBeNull();
+  expect(longCopySafety!.fitScale).toBeLessThan(1);
+  expect(longCopySafety!.leftGap).toBeGreaterThan(20);
+  expect(longCopySafety!.rightGap).toBeGreaterThan(20);
+  expect(longCopySafety!.topGap).toBeGreaterThan(40);
+  expect(longCopySafety!.progressGap).toBeGreaterThan(16);
+  expect(longCopySafety!.contentFitsHeight).toBeTruthy();
+  expect(longCopySafety!.contentFitsWidth).toBeTruthy();
   const ambientMotion = await page.evaluate(() => {
     const vinyl = getComputedStyle(document.querySelector(".wall-now__vinyl")!);
     const firstWave = getComputedStyle(document.querySelector(".display-wall-page")!, "::before");
