@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, api } from "./api";
-import { Brand, EmptyState, Loading, Notice, QueueRow, SpotifyLimitNotice } from "./components";
+import { ApiError, api, formatTime } from "./api";
+import { Artwork, Brand, EmptyState, Loading, Notice, QueueRow, SpotifyLimitNotice, TrackMeta } from "./components";
 import { QrExportDialog } from "./QrExportDialog";
 import { StatisticsPanel } from "./StatisticsPanel";
 import type { AdminState, ApiStatistics, StatisticsRange } from "./types";
@@ -15,6 +15,7 @@ export function AdminApp() {
   const [setupToken, setSetupToken] = useState("");
   const [busy, setBusy] = useState<string | number | null>(null);
   const [qrExportOpen, setQrExportOpen] = useState(false);
+  const [playerClock, setPlayerClock] = useState(() => Date.now());
   const [statistics, setStatistics] = useState<ApiStatistics | null>(null);
   const [statisticsRange, setStatisticsRange] = useState<StatisticsRange>("24h");
   const [statisticsLoading, setStatisticsLoading] = useState(false);
@@ -60,6 +61,12 @@ export function AdminApp() {
   }, [authenticated, demoMode, statisticsRange]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    setPlayerClock(Date.now());
+    if (!state?.party?.player.isPlaying || !state.party.nowPlaying) return;
+    const timer = window.setInterval(() => setPlayerClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [state?.party?.nowPlaying, state?.party?.player.isPlaying]);
   useEffect(() => { void loadStatistics(); }, [loadStatistics]);
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -145,6 +152,40 @@ export function AdminApp() {
     }
   }
 
+  const currentTrack = state?.party?.nowPlaying ?? null;
+  const measuredAt = state?.party ? Date.parse(state.party.player.updatedAt) : Number.NaN;
+  const elapsed = state?.party?.player.isPlaying && Number.isFinite(measuredAt) ? Math.max(0, playerClock - measuredAt) : 0;
+  const playerProgressMs = currentTrack ? Math.min(currentTrack.durationMs, (state?.party?.player.progressMs ?? 0) + elapsed) : 0;
+  const playerProgress = currentTrack?.durationMs ? Math.min(100, playerProgressMs / currentTrack.durationMs * 100) : 0;
+
+  async function togglePlayback() {
+    if (!state?.party) return;
+    const nextIsPlaying = !state.party.player.isPlaying;
+    setBusy("player-toggle");
+    setError(null);
+    setMessage(null);
+    setState((current) => current?.party ? {
+      ...current,
+      party: {
+        ...current.party,
+        player: {
+          ...current.party.player,
+          isPlaying: nextIsPlaying,
+          progressMs: Math.round(playerProgressMs),
+          updatedAt: new Date().toISOString(),
+        },
+      },
+    } : current);
+    try {
+      await api(nextIsPlaying ? "/api/admin/player/resume" : "/api/admin/player/pause", adminInit("POST"));
+    } catch (caught) {
+      await load();
+      setError(caught instanceof Error ? caught.message : "Wiedergabe konnte nicht gesteuert werden.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (loading) return <main id="main" className="shell"><Loading label="Adminbereich wird geladen …" /></main>;
 
   if (!state?.authenticated) {
@@ -213,9 +254,57 @@ export function AdminApp() {
               </div>
               <div className="admin-card controls">
                 <span className="section-kicker">Spotify Connect</span><h2>Wiedergabe</h2>
-                <label><span>Zielgerät</span><select value={state.selectedDeviceId ?? ""} disabled={spotifyUnavailable} onChange={(event) => void action("device", "/api/admin/parties/active/device", "PUT", { deviceId: event.target.value }, "Zielgerät geändert.")}><option value="">Aktives Spotify-Gerät</option>{state.devices?.map((device) => <option key={device.id} value={device.id} disabled={device.isRestricted}>{device.name} · {device.type}{device.isRestricted ? " (gesperrt)" : ""}</option>)}</select></label>
-                <button className="secondary-button device-refresh" type="button" disabled={spotifyUnavailable || busy === "refresh-devices"} onClick={() => void refreshDevices()}>{busy === "refresh-devices" ? "Wird aktualisiert …" : "Geräteliste aktualisieren"}</button>
-                <div className="control-buttons"><button type="button" disabled={spotifyUnavailable} onClick={() => void action("pause", "/api/admin/player/pause")}>Pause</button><button type="button" disabled={spotifyUnavailable} onClick={() => void action("resume", "/api/admin/player/resume")}>Weiter</button><button type="button" disabled={spotifyUnavailable} onClick={() => void action("next", "/api/admin/player/next")}>Nächster</button></div>
+                <div className="admin-player" role="region" aria-label="Spotify Player">
+                  <div className="admin-player__status">
+                    <span>Jetzt läuft</span>
+                    <span className={state.party.player.isPlaying ? "admin-player__live" : "admin-player__live admin-player__live--paused"}><i />{state.party.player.isPlaying ? "Spielt" : "Pausiert"}</span>
+                  </div>
+                  {currentTrack ? (
+                    <div className="admin-player__body">
+                      <Artwork track={currentTrack} size="hero" />
+                      <div className="admin-player__details">
+                        <TrackMeta track={currentTrack} />
+                        <div className="progress" role="progressbar" aria-label="Fortschritt des laufenden Songs" aria-valuemin={0} aria-valuemax={currentTrack.durationMs} aria-valuenow={playerProgressMs}><span style={{ width: `${playerProgress}%` }} /></div>
+                        <div className="progress-label"><span>{formatTime(playerProgressMs)}</span><span>−{formatTime(currentTrack.durationMs - playerProgressMs)}</span></div>
+                        <div className="admin-player__device"><span aria-hidden="true">●</span>{state.party.player.deviceName ?? "Kein aktives Gerät"}</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="admin-player__empty"><span aria-hidden="true">♫</span><div><strong>Noch keine Wiedergabe</strong><small>Starte einen Titel auf dem Spotify-Gerät.</small></div></div>
+                  )}
+                  <div className="admin-player__transport" aria-label="Wiedergabesteuerung">
+                    <button
+                      className="admin-player__play"
+                      type="button"
+                      aria-label={state.party.player.isPlaying ? "Wiedergabe pausieren" : "Wiedergabe fortsetzen"}
+                      title={state.party.player.isPlaying ? "Pause" : "Wiedergabe fortsetzen"}
+                      disabled={spotifyUnavailable || busy === "player-toggle"}
+                      onClick={() => void togglePlayback()}
+                    >
+                      {state.party.player.isPlaying ? (
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6v12M16 6v12" /></svg>
+                      ) : (
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 9 6-9 6V6Z" /></svg>
+                      )}
+                    </button>
+                    <button
+                      className="admin-player__skip"
+                      type="button"
+                      aria-label="Nächsten Titel abspielen"
+                      title="Nächster Titel"
+                      disabled={spotifyUnavailable || busy === "next"}
+                      onClick={() => void action("next", "/api/admin/player/next")}
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 6 8 6-8 6V6Z" /><path d="M17 6v12" /></svg>
+                    </button>
+                  </div>
+                </div>
+                <div className="admin-device-row">
+                  <label><span>Zielgerät</span><select value={state.selectedDeviceId ?? ""} disabled={spotifyUnavailable} onChange={(event) => void action("device", "/api/admin/parties/active/device", "PUT", { deviceId: event.target.value }, "Zielgerät geändert.")}><option value="">Aktives Spotify-Gerät</option>{state.devices?.map((device) => <option key={device.id} value={device.id} disabled={device.isRestricted}>{device.name} · {device.type}{device.isRestricted ? " (gesperrt)" : ""}</option>)}</select></label>
+                  <button className="device-refresh" type="button" aria-label="Geräteliste aktualisieren" title="Geräteliste aktualisieren" disabled={spotifyUnavailable || busy === "refresh-devices"} onClick={() => void refreshDevices()}>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5" /><path d="M4 17v-5h5" /><path d="M6.1 8.5A7 7 0 0 1 18.4 7L20 12M4 12l1.6 5A7 7 0 0 0 17.9 15.5" /></svg>
+                  </button>
+                </div>
                 {state.party.player.warning && !spotifyUnavailable && <Notice>{state.party.player.warning}</Notice>}
                 <button className="danger-button" type="button" onClick={() => window.confirm("Party wirklich beenden? Die Queue wird geschlossen.") && void action("end", "/api/admin/parties/active", "DELETE", undefined, "Party beendet.")} disabled={busy === "end"}>Party beenden</button>
               </div>

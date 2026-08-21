@@ -229,6 +229,15 @@ test("Adminfluss ist auf mobilen Viewports vollständig erreichbar", async ({ pa
   await expect(page.getByRole("heading", { name: "Admin" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Wiedergabe" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Song sofort spielen" })).toHaveCount(0);
+  const player = page.getByRole("region", { name: "Spotify Player" });
+  await expect(player).toBeVisible();
+  await expect(player.getByText("Midnight City", { exact: true })).toBeVisible();
+  await expect(player.getByRole("button", { name: "Wiedergabe pausieren" })).toBeVisible();
+  await player.getByRole("button", { name: "Wiedergabe pausieren" }).click();
+  await expect(player.getByRole("button", { name: "Wiedergabe fortsetzen" })).toBeVisible();
+  await player.getByRole("button", { name: "Wiedergabe fortsetzen" }).click();
+  await expect(player.getByRole("button", { name: "Wiedergabe pausieren" })).toBeVisible();
+  await expect(player.getByRole("button", { name: "Nächsten Titel abspielen" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Geräteliste aktualisieren" })).toBeVisible();
   await expect(page.getByRole("option", { name: /Party iPhone/ })).toHaveCount(0);
   await page.getByRole("button", { name: "Geräteliste aktualisieren" }).click();
