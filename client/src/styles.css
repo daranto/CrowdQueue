@@ -121,10 +121,9 @@ h3 { letter-spacing: -.025em; }
 .locked-card__status { width: 42px; height: 42px; flex: 0 0 42px; display: grid; place-items: center; border: 1px solid rgba(255, 116, 72, .38); border-radius: 50%; background: rgba(255, 116, 72, .08); color: var(--orange); box-shadow: inset 0 0 0 4px rgba(255, 116, 72, .04); }
 .locked-card__status svg { width: 25px; height: 25px; fill: none; stroke: currentColor; stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; }
 
-.search-panel, .queue-section { color: var(--paper-ink); padding: clamp(1.2rem, 2.5vw, 1.65rem); background: var(--paper); border: 1px solid rgba(255, 255, 255, .4); border-radius: 1.4rem; box-shadow: var(--shadow); }
-.queue-section { position: relative; overflow: hidden; }
-.queue-section::before { content: ""; position: absolute; top: 0; right: clamp(1.2rem, 3vw, 2rem); width: 76px; height: 4px; border-radius: 0 0 99px 99px; background: linear-gradient(90deg, var(--accent-strong) 0 64%, var(--orange) 64% 100%); pointer-events: none; }
-.queue-section .section-title-row > span { display: inline-flex; align-items: center; min-height: 30px; width: max-content; padding: .3rem .62rem; border: 1px solid #d6cedd; border-radius: 999px; background: rgba(255, 253, 248, .72); color: #615a70; }
+.search-panel, .queue-section { position: relative; overflow: hidden; color: var(--paper-ink); padding: clamp(1.2rem, 2.5vw, 1.65rem); background: var(--paper); border: 1px solid rgba(255, 255, 255, .4); border-radius: 1.4rem; box-shadow: var(--shadow); }
+.search-panel::before, .queue-section::before { content: ""; position: absolute; top: 0; right: clamp(1.2rem, 3vw, 2rem); width: 76px; height: 4px; border-radius: 0 0 99px 99px; background: linear-gradient(90deg, var(--accent-strong) 0 64%, var(--orange) 64% 100%); pointer-events: none; }
+.search-panel .section-title-row > span, .queue-section .section-title-row > span { display: inline-flex; align-items: center; min-height: 30px; width: max-content; padding: .3rem .62rem; border: 1px solid #d6cedd; border-radius: 999px; background: rgba(255, 253, 248, .72); color: #615a70; }
 .section-title-row { position: relative; display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; }
 .section-title-row h2 { margin-bottom: 0; }
 .section-title-row > span { color: var(--muted-dark); font-family: var(--utility); font-size: .68rem; white-space: nowrap; }
