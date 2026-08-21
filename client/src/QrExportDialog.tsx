@@ -125,7 +125,7 @@ export function QrExportDialog({ open, partyName, guestUrl, qrDataUrl, onClose }
             <legend>Druckart</legend>
             <label htmlFor="qr-tone-color" className={tone === "color" ? "choice-card choice-card--active" : "choice-card"}>
               <input id="qr-tone-color" type="radio" name="qr-tone" checked={tone === "color"} onChange={() => setTone("color")} />
-              <strong>Farbdruck</strong><small>Limettengrüne Akzente mit kräftigem Kontrast</small>
+              <strong>Farbdruck</strong><small>Violette Akzente mit kräftigem Kontrast</small>
             </label>
             <label htmlFor="qr-tone-mono" className={tone === "mono" ? "choice-card choice-card--active" : "choice-card"}>
               <input id="qr-tone-mono" type="radio" name="qr-tone" checked={tone === "mono"} onChange={() => setTone("mono")} />

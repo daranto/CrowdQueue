@@ -4,9 +4,9 @@ import { cardGrid, type QrExportOptions } from "./qrExportOptions";
 
 const PAGE_WIDTH = 210;
 const PAGE_HEIGHT = 297;
-const LIME = [201, 241, 58] as const;
-const BLACK = [16, 16, 15] as const;
-const MUTED = [96, 98, 91] as const;
+const LIME = [104, 72, 238] as const;
+const BLACK = [23, 21, 47] as const;
+const MUTED = [105, 98, 122] as const;
 
 type PdfColor = readonly [number, number, number];
 

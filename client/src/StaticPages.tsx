@@ -1,7 +1,7 @@
 import { Brand } from "./components";
 
 export function HomePage() {
-  return <div className="home-page"><header className="topbar"><Brand /></header><main id="main" className="home-hero"><span className="section-kicker">Deiner Party beitreten</span><h1>Scanne den<br />Party-QR-Code.</h1><p>Bitte scanne den QR-Code des Gastgebers oder öffne den geteilten Party-Link. So gelangst du direkt zur Musiksuche und zur gemeinsamen Warteschlange.</p></main><footer className="footer"><Brand compact /><p>Für private, nicht kommerzielle Feiern.</p><a href="/datenschutz">Datenschutz</a></footer></div>;
+  return <div className="home-page"><header className="topbar"><Brand /></header><main id="main" className="home-hero"><div className="home-hero__copy"><span className="section-kicker">Deiner Party beitreten</span><h1>Scanne den<br />Party-QR-Code.</h1><p>Bitte scanne den QR-Code des Gastgebers oder öffne den geteilten Party-Link. So gelangst du direkt zur Musiksuche und zur gemeinsamen Warteschlange.</p><span className="home-hint">Keine App. Kein Login. Direkt mitbestimmen.</span></div><div className="home-visual" aria-hidden="true"><div className="home-vinyl"><span className="brand__mark"><i /><i /><i /></span></div><i className="scan-corner scan-corner--a" /><i className="scan-corner scan-corner--b" /><span>Scan &amp; play</span></div></main><footer className="footer"><Brand compact /><p>Für private, nicht kommerzielle Feiern.</p><a href="/datenschutz">Datenschutz</a></footer></div>;
 }
 
 export function PrivacyPage() {
