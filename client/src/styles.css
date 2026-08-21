@@ -117,7 +117,8 @@ h3 { letter-spacing: -.025em; }
 
 .locked-card { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1rem 1.1rem; border: 1px dashed #8679d4; border-radius: 1rem; background: rgba(143, 124, 255, .08); }
 .locked-card .section-kicker { font-size: .61rem; }
-.lock { color: var(--orange); font-size: 1.55rem; }
+.locked-card__status { width: 42px; height: 42px; flex: 0 0 42px; display: grid; place-items: center; border: 1px solid rgba(255, 116, 72, .38); border-radius: 50%; background: rgba(255, 116, 72, .08); color: var(--orange); box-shadow: inset 0 0 0 4px rgba(255, 116, 72, .04); }
+.locked-card__status svg { width: 25px; height: 25px; fill: none; stroke: currentColor; stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; }
 
 .search-panel, .queue-section { color: var(--paper-ink); padding: clamp(1.2rem, 2.5vw, 1.65rem); background: var(--paper); border: 1px solid rgba(255, 255, 255, .4); border-radius: 1.4rem; box-shadow: var(--shadow); }
 .queue-section { position: relative; overflow: hidden; }

@@ -224,7 +224,12 @@ export function GuestApp({ code }: { code: string }) {
                   <span className="section-kicker" id="locked-title">Als Nächstes · fest eingeplant</span>
                   <TrackMeta track={state.lockedNext} compact />
                 </div>
-                <span className="lock" aria-label="Bereits an Spotify übergeben">⌁</span>
+                <span className="locked-card__status" aria-label="Bereits an Spotify übergeben">
+                  <svg viewBox="0 0 32 32" aria-hidden="true">
+                    <path d="M5 8h12M5 16h9M5 24h7" />
+                    <path d="M18 16h8m-4-4 4 4-4 4" />
+                  </svg>
+                </span>
               </section>
             )}
 
