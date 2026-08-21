@@ -232,6 +232,17 @@ test("Display Wall zeigt ausschließlich Musikwünsche und passt sich dem Bildsc
   await page.goto(displayUrl);
 
   await expect(page.getByText("Midnight City", { exact: true })).toBeVisible();
+  await expect(page.locator(".wall-now__progress, .wall-now__time")).toHaveCount(0);
+  const titleMetrics = await page.locator(".wall-now__copy h1").evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      overflow: style.overflow,
+      lineHeight: Number.parseFloat(style.lineHeight),
+      fontSize: Number.parseFloat(style.fontSize),
+    };
+  });
+  expect(titleMetrics.overflow).toBe("visible");
+  expect(titleMetrics.lineHeight).toBeGreaterThanOrEqual(titleMetrics.fontSize);
   await expect(page.getByRole("heading", { name: "Song wünschen" })).toBeVisible();
   const largeQr = page.locator(".wall-lineup__invite img");
   await expect(largeQr).toBeVisible();
@@ -264,6 +275,13 @@ test("Display Wall zeigt ausschließlich Musikwünsche und passt sich dem Bildsc
   await expect(compactQr).toBeVisible();
   const compactQrWidth = await compactQr.evaluate((element) => element.getBoundingClientRect().width);
   expect(largeQrWidth).toBeGreaterThan(compactQrWidth * 2);
+  const queueTopGap = await page.evaluate(() => {
+    const heading = document.querySelector(".wall-lineup__heading")?.getBoundingClientRect();
+    const item = document.querySelector(".wall-lineup__item")?.getBoundingClientRect();
+    return (item?.top ?? 0) - (heading?.bottom ?? 0);
+  });
+  expect(queueTopGap).toBeGreaterThanOrEqual(0);
+  expect(queueTopGap).toBeLessThan(60);
 
   await page.setViewportSize({ width: 390, height: 844 });
   const mobileLayout = await page.evaluate(() => {

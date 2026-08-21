@@ -480,13 +480,9 @@ button:disabled { opacity: .46; cursor: not-allowed; transform: none !important;
 .wall-now__art-ring::after { content: ""; position: absolute; z-index: -1; inset: -10%; border: 1px solid rgba(143, 124, 255, .16); border-radius: 50%; opacity: .7; }
 .wall-now .artwork--hero { width: 100%; height: 100%; border-radius: calc(clamp(1.1rem, 2vw, 2rem) - 5px); }
 .wall-now__copy { min-width: 0; }
-.wall-now__copy h1 { display: -webkit-box; overflow: hidden; margin: 0 0 clamp(.85rem, 1.8vw, 1.5rem); color: var(--ink); font-size: clamp(2.3rem, 4.2vw, 5.2rem); line-height: .94; letter-spacing: -.062em; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.wall-now__copy h1 { overflow: visible; margin: 0 0 clamp(.85rem, 1.8vw, 1.5rem); padding-bottom: .12em; color: var(--ink); font-size: clamp(2.3rem, 4.2vw, 5.2rem); line-height: 1.02; letter-spacing: -.062em; overflow-wrap: anywhere; text-wrap: balance; }
 .wall-now__copy h1 .explicit { vertical-align: .2em; }
 .wall-now__copy > p { display: -webkit-box; overflow: hidden; margin: 0; color: var(--muted); font-size: clamp(.9rem, 1.4vw, 1.35rem); line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.wall-now__progress { height: clamp(6px, .7vw, 10px); overflow: hidden; margin-top: clamp(1.5rem, 3.2vw, 3rem); border-radius: 999px; background: rgba(255, 255, 255, .16); }
-.wall-now__progress span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #ff8d68, var(--orange)); box-shadow: 0 0 18px rgba(255, 116, 72, .42); transition: width .85s linear; }
-.wall-now__time { display: flex; align-items: baseline; justify-content: space-between; margin-top: .65rem; color: var(--muted); font-family: var(--utility); font-size: clamp(.7rem, 1vw, .9rem); }
-.wall-now__time strong { color: var(--ink); font-size: clamp(.92rem, 1.25vw, 1.15rem); }
 .wall-now__empty { min-height: 100%; display: flex; align-items: center; justify-content: center; gap: 1.2rem; color: var(--muted); text-align: left; }
 .wall-now__empty > span { width: clamp(62px, 7vw, 100px); aspect-ratio: 1; display: grid; place-items: center; flex: 0 0 auto; border: 1px solid rgba(143, 124, 255, .44); border-radius: 50%; color: var(--accent); font-size: clamp(1.5rem, 3vw, 2.4rem); }
 .wall-now__empty h1 { margin: 0 0 .5rem; color: var(--ink); font-size: clamp(2.2rem, 4.5vw, 5rem); }
@@ -498,7 +494,7 @@ button:disabled { opacity: .46; cursor: not-allowed; transform: none !important;
 .wall-lineup__heading .section-kicker { margin-bottom: .3rem; }
 .wall-lineup__heading h2 { margin: 0; font-size: clamp(1.55rem, 2.5vw, 2.7rem); }
 .wall-lineup__heading > span { min-width: 46px; height: 46px; display: grid; place-items: center; border: 1px solid rgba(143, 124, 255, .4); border-radius: 50%; color: #d9d3ff; font-family: var(--utility); font-size: .8rem; }
-.wall-lineup__list { min-height: 0; overflow: hidden; display: grid; align-content: center; gap: clamp(.4rem, .7vh, .7rem); margin: 0; padding: clamp(.8rem, 1.5vh, 1.35rem) 0; list-style: none; }
+.wall-lineup__list { min-height: 0; overflow: hidden; display: grid; align-content: start; gap: clamp(.4rem, .7vh, .7rem); margin: 0; padding: clamp(.8rem, 1.5vh, 1.35rem) 0; list-style: none; }
 .wall-lineup__item { position: relative; min-width: 0; min-height: clamp(66px, 8vh, 94px); display: grid; grid-template-columns: 30px clamp(48px, 4.2vw, 70px) minmax(0, 1fr) auto; gap: clamp(.55rem, .85vw, .9rem); align-items: center; padding: .55rem clamp(.6rem, .9vw, .9rem); border: 1px solid rgba(255, 255, 255, .09); border-radius: 1rem; background: rgba(255, 255, 255, .035); animation: wall-cue-arrive .58s both ease-out; }
 .wall-lineup__item:nth-child(2) { animation-delay: .04s; }
 .wall-lineup__item:nth-child(3) { animation-delay: .08s; }
@@ -638,8 +634,6 @@ button:disabled { opacity: .46; cursor: not-allowed; transform: none !important;
   .wall-now .artwork--hero { border-radius: .75rem; }
   .wall-now__copy h1 { margin-bottom: .6rem; font-size: clamp(1.45rem, 8vw, 2.5rem); -webkit-line-clamp: 3; }
   .wall-now__copy > p { font-size: .72rem; -webkit-line-clamp: 2; }
-  .wall-now__progress { height: 5px; margin-top: 1rem; }
-  .wall-now__time { margin-top: .4rem; font-size: .62rem; }
   .wall-lineup { min-height: 330px; padding: 1rem; }
   .wall-lineup__heading h2 { font-size: 1.6rem; }
   .wall-lineup__heading > span { min-width: 38px; height: 38px; }
@@ -696,7 +690,6 @@ button:disabled { opacity: .46; cursor: not-allowed; transform: none !important;
   .wall-now, .wall-lineup { padding: 1rem; }
   .wall-now__art-ring { width: min(100%, 46vh); }
   .wall-now__copy h1 { font-size: clamp(2rem, 3.5vw, 3.8rem); }
-  .wall-now__progress { margin-top: 1.1rem; }
   .wall-lineup__item { min-height: 58px; }
 }
 

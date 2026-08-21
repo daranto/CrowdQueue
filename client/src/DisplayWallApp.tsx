@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
-import { api, formatTime } from "./api";
+import { api } from "./api";
 import { Artwork, ExplicitBadge } from "./components";
 import type { PartyState, Track } from "./types";
 
@@ -163,16 +163,12 @@ export function DisplayWallApp({ code }: { code: string }) {
             </div>
             {state.nowPlaying ? (
               <div className="wall-now__layout" key={state.nowPlaying.id}>
-                <div className="wall-now__art-ring">
+                <div className="wall-now__art-ring" role="progressbar" aria-label="Fortschritt des laufenden Songs" aria-valuemin={0} aria-valuemax={state.nowPlaying.durationMs} aria-valuenow={Math.round(progressMs)}>
                   <Artwork track={state.nowPlaying} size="hero" />
                 </div>
                 <div className="wall-now__copy">
                   <h1 id="wall-current-title">{state.nowPlaying.name} {state.nowPlaying.explicit && <ExplicitBadge />}</h1>
                   <p>{state.nowPlaying.artists}<span> · </span>{state.nowPlaying.album}</p>
-                  <div className="wall-now__progress" role="progressbar" aria-label="Fortschritt des laufenden Songs" aria-valuemin={0} aria-valuemax={state.nowPlaying.durationMs} aria-valuenow={Math.round(progressMs)}>
-                    <span style={{ width: `${progress}%` }} />
-                  </div>
-                  <div className="wall-now__time"><strong>{formatTime(progressMs)}</strong><span>−{formatTime(state.nowPlaying.durationMs - progressMs)}</span></div>
                 </div>
               </div>
             ) : (
