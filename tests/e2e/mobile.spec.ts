@@ -164,6 +164,22 @@ test("Gast kann mobil suchen, wünschen und voten", async ({ page, request }) =>
   await page.goto(`/p/${admin.party.party.code}`);
 
   await expect(page.getByRole("heading", { name: "Mobile Testparty" })).toBeVisible();
+  const spotifyQueueButton = page.getByRole("button", { name: /Spotify Warteschlange öffnen/ });
+  await expect(spotifyQueueButton).toBeVisible();
+  await expect(page.locator(".native-queue")).toHaveCount(0);
+  await spotifyQueueButton.click();
+  const spotifyQueueDialog = page.getByRole("dialog", { name: "Spotify Warteschlange" });
+  await expect(spotifyQueueDialog).toBeVisible();
+  await expect(spotifyQueueDialog.getByText("Dance The Night")).toBeVisible();
+  await expect(spotifyQueueDialog.getByText("Blinding Lights")).toBeVisible();
+  expect(await spotifyQueueDialog.evaluate((element) => getComputedStyle(element).position)).toBe("fixed");
+  await page.keyboard.press("Escape");
+  await expect(spotifyQueueDialog).toBeHidden();
+  await expect(spotifyQueueButton).toBeFocused();
+  await spotifyQueueButton.click();
+  await spotifyQueueDialog.getByRole("button", { name: "Spotify Warteschlange schließen" }).click();
+  await expect(spotifyQueueDialog).toBeHidden();
+
   const resumedStateRequest = page.waitForRequest((request) =>
     request.method() === "GET" && request.url().includes(`/api/parties/${admin.party.party.code}/state`),
   );

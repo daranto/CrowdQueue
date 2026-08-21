@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type AnimationEvent as ReactAnimationEvent } from "react";
 import { ApiError, api, formatTime } from "./api";
 import { Artwork, Brand, EmptyState, Loading, Notice, QueueRow, SearchResult, SpotifyLimitNotice, SpotifyLink, TrackMeta } from "./components";
+import { SpotifyQueueDialog } from "./SpotifyQueueDialog";
 import type { PartyState, Track } from "./types";
 import { useSearch } from "./useSearch";
 
@@ -17,14 +18,21 @@ export function GuestApp({ code }: { code: string }) {
   const [query, setQuery] = useState("");
   const [busyId, setBusyId] = useState<string | number | null>(null);
   const [progressClock, setProgressClock] = useState(() => Date.now());
+  const [spotifyQueueOpen, setSpotifyQueueOpen] = useState(false);
   const [renderedLockedNext, setRenderedLockedNext] = useState<Track | null>(null);
   const [nextTrackPhase, setNextTrackPhaseState] = useState<NextTrackPhase>("visible");
   const renderedLockedNextRef = useRef<Track | null>(null);
   const pendingLockedNextRef = useRef<Track | null>(null);
   const nextTrackPhaseRef = useRef<NextTrackPhase>("visible");
   const nextTrackExitTimerRef = useRef<number | null>(null);
+  const spotifyQueueButtonRef = useRef<HTMLButtonElement>(null);
   const rateLimited = state?.spotifyRateLimit.limited ?? false;
   const search = useSearch(`/api/parties/${code}/search`, rateLimited ? "" : query);
+
+  const closeSpotifyQueue = useCallback(() => {
+    setSpotifyQueueOpen(false);
+    window.requestAnimationFrame(() => spotifyQueueButtonRef.current?.focus());
+  }, []);
 
   const setNextTrackPhase = useCallback((phase: NextTrackPhase) => {
     nextTrackPhaseRef.current = phase;
@@ -270,6 +278,22 @@ export function GuestApp({ code }: { code: string }) {
     <div className="guest-page">
       <header className="topbar">
         <Brand />
+        <button
+          ref={spotifyQueueButtonRef}
+          className="topbar__queue-button"
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded={spotifyQueueOpen}
+          aria-label={`Spotify Warteschlange öffnen, ${state?.nativeQueue.length ?? 0} Titel`}
+          onClick={() => setSpotifyQueueOpen(true)}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 6h10M4 12h8M4 18h6" />
+            <path d="m15 15 4 3-4 3v-6Z" />
+          </svg>
+          <span className="topbar__queue-label"><small>Spotify</small><strong>Queue</strong></span>
+          <span className="topbar__queue-count">{state?.nativeQueue.length ?? 0}</span>
+        </button>
       </header>
       <main id="main" className="shell shell--guest">
         <div className="guest-alerts">
@@ -378,14 +402,10 @@ export function GuestApp({ code }: { code: string }) {
               ) : <EmptyState title="Die Queue wartet auf euch">Suche nach einem Song und stelle den ersten Musikwunsch.</EmptyState>}
             </section>
 
-            <details className="native-queue">
-              <summary><span><span className="section-kicker">Schreibgeschützt</span><strong>Spotify Warteschlange</strong></span><span aria-hidden="true">⌄</span></summary>
-              <p>Diese Titel wurden direkt in Spotify vorgemerkt und können hier nicht umsortiert werden.</p>
-              {state?.nativeQueue.length ? <ol>{state.nativeQueue.map((track, index) => <li key={`${track.id}-${index}`}><span>{index + 1}</span><TrackMeta track={track} compact /></li>)}</ol> : <p>Noch keine weiteren Spotify-Titel vorgemerkt.</p>}
-            </details>
           </div>
         </div>
       </main>
+      <SpotifyQueueDialog open={spotifyQueueOpen} tracks={state?.nativeQueue ?? []} onClose={closeSpotifyQueue} />
       <footer className="footer"><Brand compact /><p>Musikdaten werden von Spotify bereitgestellt.</p><a href="/datenschutz">Datenschutz</a></footer>
     </div>
   );
