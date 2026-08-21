@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { api } from "./api";
 import { Artwork, ExplicitBadge } from "./components";
 import type { PartyState, Track } from "./types";
@@ -11,7 +11,7 @@ interface WallCue {
   locked: boolean;
 }
 
-const MAX_VISIBLE_CUES = 3;
+const MAX_RESPONSIVE_CUES = 6;
 
 function buildCues(state: PartyState): WallCue[] {
   const cues: WallCue[] = [];
@@ -37,6 +37,8 @@ export function DisplayWallApp({ code }: { code: string }) {
   const [error, setError] = useState<string | null>(null);
   const [clock, setClock] = useState(() => Date.now());
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [cueCapacity, setCueCapacity] = useState(3);
+  const lineupRef = useRef<HTMLElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -103,9 +105,39 @@ export function DisplayWallApp({ code }: { code: string }) {
   }, [clock, state]);
   const progress = state?.nowPlaying?.durationMs ? Math.min(100, progressMs / state.nowPlaying.durationMs * 100) : 0;
   const cues = useMemo(() => state ? buildCues(state) : [], [state]);
-  const visibleCues = cues.slice(0, MAX_VISIBLE_CUES);
-  const hiddenCueCount = Math.max(0, cues.length - visibleCues.length);
+  const visibleCues = cues.slice(0, cueCapacity);
   const wallStyle = { "--wall-progress-angle": `${progress * 3.6}deg` } as CSSProperties;
+
+  useEffect(() => {
+    const panel = lineupRef.current;
+    if (!panel || cues.length === 0) return;
+    let frame = 0;
+    const measure = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const list = panel.querySelector<HTMLOListElement>(".wall-lineup__list");
+        const item = list?.querySelector<HTMLElement>(".wall-lineup__item");
+        if (!list || !item) return;
+        const listHeight = list.getBoundingClientRect().height;
+        const itemHeight = item.getBoundingClientRect().height;
+        const parsedGap = Number.parseFloat(window.getComputedStyle(list).rowGap);
+        const gap = Number.isFinite(parsedGap) ? parsedGap : 8;
+        const capacity = Math.floor((listHeight + gap) / (itemHeight + gap));
+        setCueCapacity(Math.max(1, Math.min(MAX_RESPONSIVE_CUES, capacity)));
+      });
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(panel);
+    const list = panel.querySelector<HTMLOListElement>(".wall-lineup__list");
+    if (list) observer.observe(list);
+    window.addEventListener("resize", measure);
+    measure();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+      window.cancelAnimationFrame(frame);
+    };
+  }, [cues.length, qrDataUrl]);
 
   if (loading) {
     return <main id="main" className="display-wall display-wall--message"><span className="display-wall__pulse" /><p>Display Wall wird verbunden …</p></main>;
@@ -142,7 +174,9 @@ export function DisplayWallApp({ code }: { code: string }) {
             {state.nowPlaying ? (
               <div className="wall-now__layout" key={state.nowPlaying.id}>
                 <div className="wall-now__art-ring" role="progressbar" aria-label="Fortschritt des laufenden Songs" aria-valuemin={0} aria-valuemax={state.nowPlaying.durationMs} aria-valuenow={Math.round(progressMs)}>
-                  <Artwork track={state.nowPlaying} size="hero" />
+                  <div className={`wall-now__vinyl ${state.player.isPlaying ? "wall-now__vinyl--spinning" : "wall-now__vinyl--paused"}`}>
+                    <Artwork track={state.nowPlaying} size="hero" />
+                  </div>
                 </div>
                 <div className="wall-now__copy">
                   <h1 id="wall-current-title">{state.nowPlaying.name} {state.nowPlaying.explicit && <ExplicitBadge />}</h1>
@@ -157,7 +191,7 @@ export function DisplayWallApp({ code }: { code: string }) {
             )}
           </section>
 
-          <section className={`wall-lineup ${visibleCues.length ? "" : "wall-lineup--invite"}`} aria-labelledby="wall-lineup-title">
+          <section ref={lineupRef} className={`wall-lineup ${visibleCues.length ? "" : "wall-lineup--invite"}`} aria-labelledby="wall-lineup-title">
             {visibleCues.length ? (
               <>
                 <div className="wall-lineup__heading">
@@ -178,10 +212,9 @@ export function DisplayWallApp({ code }: { code: string }) {
                 ))}
                 </ol>
                 <div className="wall-lineup__footer">
-                  <p className="wall-lineup__more">{hiddenCueCount > 0 ? `+ ${hiddenCueCount} weitere ${hiddenCueCount === 1 ? "Titel wartet" : "Titel warten"}` : "Live nach Stimmen sortiert"}</p>
                   <div className="wall-lineup__scan">
-                    <span><strong>Song wünschen</strong><small>Party-Code scannen</small></span>
                     {qrDataUrl ? <img src={qrDataUrl} alt={`QR-Code für Musikwünsche bei ${state.party.name}`} /> : <i aria-hidden="true" />}
+                    <span><strong>Song wünschen</strong><small>Party-Code scannen</small></span>
                   </div>
                 </div>
               </>

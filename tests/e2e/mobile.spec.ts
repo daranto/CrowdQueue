@@ -300,19 +300,24 @@ test("Display Wall zeigt ausschließlich Musikwünsche und passt sich dem Bildsc
   expect(desktopLayout.queueX).toBeGreaterThan(desktopLayout.playerX);
   expect(desktopLayout.scrollWidth).toBeLessThanOrEqual(desktopLayout.width);
   const ambientMotion = await page.evaluate(() => {
-    const vinyl = getComputedStyle(document.querySelector(".wall-now")!, "::before");
-    const glow = getComputedStyle(document.querySelector(".display-wall-page")!, "::before");
+    const vinyl = getComputedStyle(document.querySelector(".wall-now__vinyl")!);
+    const firstWave = getComputedStyle(document.querySelector(".display-wall-page")!, "::before");
+    const secondWave = getComputedStyle(document.querySelector(".display-wall-page")!, "::after");
     return {
       vinylName: vinyl.animationName,
       vinylDuration: Number.parseFloat(vinyl.animationDuration),
-      glowName: glow.animationName,
-      glowDuration: Number.parseFloat(glow.animationDuration),
+      firstWaveName: firstWave.animationName,
+      firstWaveDuration: Number.parseFloat(firstWave.animationDuration),
+      secondWaveName: secondWave.animationName,
+      secondWaveDuration: Number.parseFloat(secondWave.animationDuration),
     };
   });
-  expect(ambientMotion.vinylName).toContain("wall-vinyl-turn");
-  expect(ambientMotion.vinylDuration).toBeGreaterThanOrEqual(30);
-  expect(ambientMotion.glowName).toContain("wall-ambient-drift");
-  expect(ambientMotion.glowDuration).toBeGreaterThanOrEqual(15);
+  expect(ambientMotion.vinylName).toContain("wall-record-spin");
+  expect(ambientMotion.vinylDuration).toBeCloseTo(2.7, 1);
+  expect(ambientMotion.firstWaveName).toContain("wall-wave-drift-a");
+  expect(ambientMotion.firstWaveDuration).toBeGreaterThanOrEqual(20);
+  expect(ambientMotion.secondWaveName).toContain("wall-wave-drift-b");
+  expect(ambientMotion.secondWaveDuration).toBeGreaterThanOrEqual(25);
 
   const requested = await request.post(`/api/parties/${admin.party.party.code}/requests`, { data: { trackId: "demo-2" } });
   expect(requested.ok()).toBeTruthy();
@@ -325,12 +330,26 @@ test("Display Wall zeigt ausschließlich Musikwünsche und passt sich dem Bildsc
   const compactQr = page.locator(".wall-lineup__scan img");
   await expect(compactQr).toBeVisible();
   const compactQrWidth = await compactQr.evaluate((element) => element.getBoundingClientRect().width);
-  expect(compactQrWidth).toBeGreaterThan(100);
-  expect(largeQrWidth).toBeGreaterThan(compactQrWidth * 2);
-  await expect(page.locator(".wall-lineup__item")).toHaveCount(3);
-  await expect(page.getByText("Wunsch Nummer Drei", { exact: true })).toBeVisible();
-  await expect(page.getByText("Wunsch Nummer Vier", { exact: true })).toHaveCount(0);
-  await expect(page.locator(".wall-lineup__more")).toContainText("+ 2 weitere Titel warten");
+  expect(compactQrWidth).toBeGreaterThanOrEqual(280);
+  expect(largeQrWidth).toBeGreaterThan(compactQrWidth);
+  await expect(page.getByText("Live nach Stimmen sortiert", { exact: true })).toHaveCount(0);
+  await expect.poll(() => page.locator(".wall-lineup__item").count()).toBeGreaterThan(1);
+  const desktopCueCount = await page.locator(".wall-lineup__item").count();
+  expect(desktopCueCount).toBeLessThanOrEqual(6);
+  const qrAlignment = await page.evaluate(() => {
+    const footer = document.querySelector(".wall-lineup__footer")!.getBoundingClientRect();
+    const label = document.querySelector(".wall-lineup__scan > span")!.getBoundingClientRect();
+    const qr = document.querySelector(".wall-lineup__scan img")!.getBoundingClientRect();
+    const footerCenter = footer.left + footer.width / 2;
+    return {
+      labelOffset: Math.abs(label.left + label.width / 2 - footerCenter),
+      qrOffset: Math.abs(qr.left + qr.width / 2 - footerCenter),
+      labelBelowQr: label.top >= qr.bottom,
+    };
+  });
+  expect(qrAlignment.labelOffset).toBeLessThan(4);
+  expect(qrAlignment.qrOffset).toBeLessThan(4);
+  expect(qrAlignment.labelBelowQr).toBeTruthy();
   const queueTopGap = await page.evaluate(() => {
     const heading = document.querySelector(".wall-lineup__heading")?.getBoundingClientRect();
     const item = document.querySelector(".wall-lineup__item")?.getBoundingClientRect();
@@ -352,7 +371,15 @@ test("Display Wall zeigt ausschließlich Musikwünsche und passt sich dem Bildsc
   });
   expect(mobileLayout.queueY).toBeGreaterThan(mobileLayout.playerY);
   expect(mobileLayout.scrollWidth).toBeLessThanOrEqual(mobileLayout.width);
-  await expect(page.locator(".wall-lineup__item")).toHaveCount(3);
+  await expect.poll(() => page.locator(".wall-lineup__item").count()).toBeLessThanOrEqual(desktopCueCount);
+  const mobileCueCount = await page.locator(".wall-lineup__item").count();
+  expect(mobileCueCount).toBeGreaterThan(0);
+  const mobileQueueFits = await page.evaluate(() => {
+    const list = document.querySelector(".wall-lineup__list")?.getBoundingClientRect();
+    const lastItem = document.querySelector(".wall-lineup__item:last-child")?.getBoundingClientRect();
+    return !list || !lastItem || lastItem.bottom <= list.bottom + 1;
+  });
+  expect(mobileQueueFits).toBeTruthy();
   await expect(compactQr).toBeVisible();
 });
 
