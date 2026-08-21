@@ -30,11 +30,12 @@ describe("Queue Controller", () => {
   it("plant Player-Abfragen abhängig von Wiedergabe und Queue statt im festen Takt", () => {
     const base: PlayerSnapshot = { isPlaying: true, progressMs: 20000, deviceId: "iphone", deviceName: "iPhone", deviceRestricted: false, current, nativeQueue: [], updatedAt: new Date().toISOString(), warning: null };
     assert.equal(adaptiveControllerDelay(base, true, false), 50000, "der nächste Abruf soll exakt zum 30-Sekunden-Lockfenster erfolgen");
-    assert.equal(adaptiveControllerDelay(base, false, false), 120000, "ohne Wünsche genügt ein sehr seltener Kontrollabruf");
+    assert.equal(adaptiveControllerDelay(base, false, false), 83000, "mit Live-Anzeige wird drei Sekunden nach dem erwarteten Songende aktualisiert");
     assert.equal(adaptiveControllerDelay(base, false, false, false), 300000, "ohne Live-Verbindung und Queue genügt ein Fünf-Minuten-Abstand");
     assert.equal(adaptiveControllerDelay({ ...base, isPlaying: false }, true, false), 60000, "eine Pause wird nur einmal pro Minute geprüft");
     assert.equal(adaptiveControllerDelay({ ...base, deviceRestricted: true }, true, false), 120000, "gesperrte Geräte dürfen keinen engen Polling-Loop auslösen");
-    assert.equal(adaptiveControllerDelay({ ...base, progressMs: 71000 }, false, true), 31000, "ein gesperrter Folgetitel wird erst nach dem erwarteten Songende geprüft");
+    assert.equal(adaptiveControllerDelay({ ...base, progressMs: 71000 }, false, true), 32000, "ein gesperrter Folgetitel wird drei Sekunden nach dem erwarteten Songende geprüft");
+    assert.equal(adaptiveControllerDelay({ ...base, progressMs: 99000 }, false, false), 4000, "kurz vor Ende bleibt der gezielte Drei-Sekunden-Refresh erhalten");
   });
 
   it("sperrt genau einen Gewinner innerhalb des 30-Sekunden-Fensters", async () => {

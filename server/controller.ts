@@ -13,7 +13,7 @@ const ERROR_DELAY_MS = 60_000;
 const DISCONNECTED_DELAY_MS = 5 * 60_000;
 const DORMANT_DELAY_MS = 5 * 60_000;
 const NATIVE_QUEUE_REFRESH_MS = 5 * 60_000;
-const LOCKED_TRANSITION_GRACE_MS = 2_000;
+const TRACK_END_REFRESH_GRACE_MS = 3_000;
 const MAX_TIMEOUT_MS = 24 * 60 * 60_000;
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -39,13 +39,15 @@ export function adaptiveControllerDelay(
 
   const remaining = Math.max(0, snapshot.current.durationMs - snapshot.progressMs);
   if (hasLocked) {
-    return clamp(remaining + LOCKED_TRANSITION_GRACE_MS, MIN_DELAY_MS, PLAYING_WITH_REQUESTS_MAX_DELAY_MS);
+    return clamp(remaining + TRACK_END_REFRESH_GRACE_MS, MIN_DELAY_MS, PLAYING_WITH_REQUESTS_MAX_DELAY_MS);
   }
   if (hasPending) {
     const untilLockWindow = remaining - config.lockBeforeEndMs;
     return clamp(untilLockWindow, MIN_DELAY_MS, PLAYING_WITH_REQUESTS_MAX_DELAY_MS);
   }
-  return hasLiveListeners ? PLAYING_WITHOUT_REQUESTS_DELAY_MS : DORMANT_DELAY_MS;
+  return hasLiveListeners
+    ? clamp(remaining + TRACK_END_REFRESH_GRACE_MS, MIN_DELAY_MS, PLAYING_WITHOUT_REQUESTS_DELAY_MS)
+    : DORMANT_DELAY_MS;
 }
 
 export class QueueController {

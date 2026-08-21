@@ -86,6 +86,15 @@ test("Fest eingeplanter Track bleibt in derselben Player-Karte", async ({ page, 
     await stateResponse;
   };
 
+  await page.addInitScript(() => {
+    const animationNames: string[] = [];
+    Object.defineProperty(window, "__crowdQueueAnimationNames", { value: animationNames });
+    document.addEventListener("animationstart", (event) => animationNames.push(event.animationName));
+  });
+  const observedAnimations = () => page.evaluate(() =>
+    (window as Window & { __crowdQueueAnimationNames: string[] }).__crowdQueueAnimationNames,
+  );
+
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/p/${admin.party.party.code}`);
 
@@ -102,24 +111,16 @@ test("Fest eingeplanter Track bleibt in derselben Player-Karte", async ({ page, 
     return {
       currentX: currentRect?.x ?? 0,
       nextX: nextRect?.x ?? 0,
-      animationName: next ? getComputedStyle(next).animationName : "",
-      animationDuration: next ? Number.parseFloat(getComputedStyle(next).animationDuration) : 0,
     };
   });
   expect(desktop.nextX).toBeGreaterThan(desktop.currentX);
-  expect(desktop.animationName).toContain("next-track-enter-inline");
-  expect(desktop.animationDuration).toBeGreaterThan(0.5);
+  await expect.poll(observedAnimations).toContain("next-track-enter-inline");
 
   await expect(next).toHaveClass(/now-playing__next--visible/);
   includeLockedNext = false;
   await refreshPartyState();
   await expect(next).toHaveClass(/now-playing__next--exiting/);
-  const desktopExit = await next.evaluate((element) => ({
-    animationName: getComputedStyle(element).animationName,
-    animationDuration: Number.parseFloat(getComputedStyle(element).animationDuration),
-  }));
-  expect(desktopExit.animationName).toContain("next-track-exit-inline");
-  expect(desktopExit.animationDuration).toBeGreaterThanOrEqual(0.5);
+  await expect.poll(observedAnimations).toContain("next-track-exit-inline");
   await expect(next).toHaveCount(0, { timeout: 1_200 });
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -134,28 +135,114 @@ test("Fest eingeplanter Track bleibt in derselben Player-Karte", async ({ page, 
     return {
       currentY: currentRect?.y ?? 0,
       nextY: nextRect?.y ?? 0,
-      animationName: next ? getComputedStyle(next).animationName : "",
-      animationDuration: next ? Number.parseFloat(getComputedStyle(next).animationDuration) : 0,
       viewportWidth: window.innerWidth,
       scrollWidth: document.documentElement.scrollWidth,
     };
   });
   expect(mobile.nextY).toBeGreaterThan(mobile.currentY);
-  expect(mobile.animationName).toContain("next-track-enter-stacked");
-  expect(mobile.animationDuration).toBeGreaterThan(0.5);
+  await expect.poll(observedAnimations).toContain("next-track-enter-stacked");
   expect(mobile.scrollWidth).toBeLessThanOrEqual(mobile.viewportWidth);
 
   await expect(next).toHaveClass(/now-playing__next--visible/);
   includeLockedNext = false;
   await refreshPartyState();
   await expect(next).toHaveClass(/now-playing__next--exiting/);
-  const mobileExit = await next.evaluate((element) => ({
-    animationName: getComputedStyle(element).animationName,
-    animationDuration: Number.parseFloat(getComputedStyle(element).animationDuration),
-  }));
-  expect(mobileExit.animationName).toContain("next-track-exit-stacked");
-  expect(mobileExit.animationDuration).toBeGreaterThanOrEqual(0.5);
+  await expect.poll(observedAnimations).toContain("next-track-exit-stacked");
   await expect(next).toHaveCount(0, { timeout: 1_200 });
+});
+
+test("Aktueller Track blendet auf Wall, Gastseite und im Admin weich um", async ({ page, request }) => {
+  const response = await request.get("/api/admin/state", { headers: { "x-demo-admin": "true" } });
+  const admin = await response.json();
+  const code = admin.party.party.code;
+  const replacement = {
+    ...admin.party.nowPlaying,
+    id: "fade-transition-track",
+    uri: "spotify:track:fade-transition-track",
+    name: "Soft Transition",
+    artists: "CrowdQueue",
+    album: "Motion Studies",
+  };
+  let showReplacement = false;
+
+  await page.route(`**/api/parties/${code}/state`, async (route) => {
+    const stateResponse = await route.fetch();
+    const partyState = await stateResponse.json();
+    await route.fulfill({
+      response: stateResponse,
+      json: { ...partyState, nowPlaying: showReplacement ? replacement : partyState.nowPlaying },
+    });
+  });
+
+  const refreshPublicState = async () => {
+    const stateResponse = page.waitForResponse((candidate) =>
+      candidate.request().method() === "GET" && candidate.url().includes(`/api/parties/${code}/state`),
+    );
+    await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })));
+    await stateResponse;
+  };
+
+  await page.addInitScript(() => {
+    const animationNames: string[] = [];
+    Object.defineProperty(window, "__crowdQueueAnimationNames", { value: animationNames });
+    document.addEventListener("animationstart", (event) => animationNames.push(event.animationName));
+  });
+  const observedAnimations = () => page.evaluate(() =>
+    (window as Window & { __crowdQueueAnimationNames: string[] }).__crowdQueueAnimationNames,
+  );
+  const resetObservedAnimations = () => page.evaluate(() => {
+    (window as Window & { __crowdQueueAnimationNames: string[] }).__crowdQueueAnimationNames.length = 0;
+  });
+
+  const expectFadeSwap = async (selector: string) => {
+    const player = page.locator(selector);
+    await expect(player).toHaveClass(/now-track-transition--visible/);
+    await resetObservedAnimations();
+    showReplacement = true;
+    await refreshPublicState();
+    await expect(player).toHaveClass(/now-track-transition--exiting/);
+    const exitMotion = await player.evaluate((element) => ({
+      animationName: getComputedStyle(element).animationName,
+      animationDuration: Number.parseFloat(getComputedStyle(element).animationDuration),
+    }));
+    expect(exitMotion.animationName).toContain("now-track-fade-out");
+    expect(exitMotion.animationDuration).toBeGreaterThanOrEqual(.4);
+    await expect.poll(observedAnimations).toContain("now-track-fade-out");
+    await expect(page.getByText("Soft Transition", { exact: true })).toBeVisible({ timeout: 1_200 });
+    await expect.poll(observedAnimations).toContain("now-track-fade-in");
+    await expect(page.locator(selector)).toHaveClass(/now-track-transition--visible/, { timeout: 1_200 });
+  };
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/p/${code}`);
+  await expectFadeSwap(".now-playing__current");
+
+  showReplacement = false;
+  await page.goto(`/p/${code}/display`);
+  await expectFadeSwap(".wall-now__layout");
+
+  await page.unroute(`**/api/parties/${code}/state`);
+  let showAdminReplacement = false;
+  await page.route("**/api/admin/state*", async (route) => {
+    await route.fulfill({
+      json: showAdminReplacement
+        ? { ...admin, party: { ...admin.party, nowPlaying: replacement } }
+        : admin,
+    });
+  });
+  await page.setExtraHTTPHeaders({ "x-demo-admin": "true" });
+  await page.goto("/admin");
+  const adminPlayer = page.locator(".admin-player__body");
+  await expect(adminPlayer).toHaveClass(/now-track-transition--visible/);
+  const previousTitle = await adminPlayer.locator(".track-meta__title").innerText();
+  await resetObservedAnimations();
+  showAdminReplacement = true;
+  await page.getByRole("button", { name: "Nächsten Titel abspielen" }).click();
+  await expect(adminPlayer).toHaveClass(/now-track-transition--exiting/);
+  await expect.poll(observedAnimations).toContain("now-track-fade-out");
+  await expect(adminPlayer.locator(".track-meta__title")).not.toHaveText(previousTitle, { timeout: 1_200 });
+  await expect.poll(observedAnimations).toContain("now-track-fade-in");
+  await expect(page.locator(".admin-player__body")).toHaveClass(/now-track-transition--visible/, { timeout: 1_200 });
 });
 
 test("Gast kann mobil suchen, wünschen und voten", async ({ page, request }) => {

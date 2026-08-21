@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { api } from "./api";
 import { Artwork, ExplicitBadge } from "./components";
 import type { PartyState, Track } from "./types";
+import { useTrackTransition } from "./useTrackTransition";
 
 interface WallCue {
   key: string;
@@ -39,6 +40,7 @@ export function DisplayWallApp({ code }: { code: string }) {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [cueCapacity, setCueCapacity] = useState(3);
   const lineupRef = useRef<HTMLElement>(null);
+  const currentTrackTransition = useTrackTransition(state?.nowPlaying ?? null);
 
   const load = useCallback(async () => {
     try {
@@ -103,7 +105,11 @@ export function DisplayWallApp({ code }: { code: string }) {
     const elapsed = state.player.isPlaying && Number.isFinite(measuredAt) ? Math.max(0, clock - measuredAt) : 0;
     return Math.min(state.nowPlaying.durationMs, state.player.progressMs + elapsed);
   }, [clock, state]);
-  const progress = state?.nowPlaying?.durationMs ? Math.min(100, progressMs / state.nowPlaying.durationMs * 100) : 0;
+  const renderedNowPlaying = currentTrackTransition.renderedTrack;
+  const renderedProgressMs = renderedNowPlaying?.id === state?.nowPlaying?.id
+    ? progressMs
+    : renderedNowPlaying?.durationMs ?? 0;
+  const progress = renderedNowPlaying?.durationMs ? Math.min(100, renderedProgressMs / renderedNowPlaying.durationMs * 100) : 0;
   const cues = useMemo(() => state ? buildCues(state) : [], [state]);
   const visibleCues = cues.slice(0, cueCapacity);
   const wallStyle = { "--wall-progress-angle": `${progress * 3.6}deg` } as CSSProperties;
@@ -171,16 +177,20 @@ export function DisplayWallApp({ code }: { code: string }) {
               <span className="section-kicker">Läuft gerade</span>
               <span className={state.player.isPlaying ? "wall-now__on-air" : "wall-now__on-air wall-now__on-air--paused"}><i />{state.player.isPlaying ? "On Air" : "Pausiert"}</span>
             </div>
-            {state.nowPlaying ? (
-              <div className="wall-now__layout" key={state.nowPlaying.id}>
-                <div className="wall-now__art-ring" role="progressbar" aria-label="Fortschritt des laufenden Songs" aria-valuemin={0} aria-valuemax={state.nowPlaying.durationMs} aria-valuenow={Math.round(progressMs)}>
+            {renderedNowPlaying ? (
+              <div
+                className={`wall-now__layout now-track-transition--${currentTrackTransition.phase}`}
+                key={renderedNowPlaying.id}
+                onAnimationEnd={currentTrackTransition.onAnimationEnd}
+              >
+                <div className="wall-now__art-ring" role="progressbar" aria-label="Fortschritt des laufenden Songs" aria-valuemin={0} aria-valuemax={renderedNowPlaying.durationMs} aria-valuenow={Math.round(renderedProgressMs)}>
                   <div className={`wall-now__vinyl ${state.player.isPlaying ? "wall-now__vinyl--spinning" : "wall-now__vinyl--paused"}`}>
-                    <Artwork track={state.nowPlaying} size="hero" />
+                    <Artwork track={renderedNowPlaying} size="hero" />
                   </div>
                 </div>
                 <div className="wall-now__copy">
-                  <h1 id="wall-current-title">{state.nowPlaying.name} {state.nowPlaying.explicit && <ExplicitBadge />}</h1>
-                  <p>{state.nowPlaying.artists}<span> · </span>{state.nowPlaying.album}</p>
+                  <h1 id="wall-current-title">{renderedNowPlaying.name} {renderedNowPlaying.explicit && <ExplicitBadge />}</h1>
+                  <p>{renderedNowPlaying.artists}<span> · </span>{renderedNowPlaying.album}</p>
                 </div>
               </div>
             ) : (

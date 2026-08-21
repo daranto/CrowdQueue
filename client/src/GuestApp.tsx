@@ -4,6 +4,7 @@ import { Artwork, Brand, EmptyState, Loading, Notice, QueueRow, SearchResult, Sp
 import { SpotifyQueueDialog } from "./SpotifyQueueDialog";
 import type { PartyState, Track } from "./types";
 import { useSearch } from "./useSearch";
+import { useTrackTransition } from "./useTrackTransition";
 
 type NextTrackPhase = "entering" | "visible" | "exiting";
 
@@ -28,6 +29,7 @@ export function GuestApp({ code }: { code: string }) {
   const spotifyQueueButtonRef = useRef<HTMLButtonElement>(null);
   const rateLimited = state?.spotifyRateLimit.limited ?? false;
   const search = useSearch(`/api/parties/${code}/search`, rateLimited ? "" : query);
+  const currentTrackTransition = useTrackTransition(state?.nowPlaying ?? null);
 
   const closeSpotifyQueue = useCallback(() => {
     setSpotifyQueueOpen(false);
@@ -254,7 +256,11 @@ export function GuestApp({ code }: { code: string }) {
     const elapsed = state.player.isPlaying && Number.isFinite(measuredAt) ? Math.max(0, progressClock - measuredAt) : 0;
     return Math.min(state.nowPlaying.durationMs, state.player.progressMs + elapsed);
   }, [progressClock, state]);
-  const progress = state?.nowPlaying?.durationMs ? Math.min(100, estimatedProgressMs / state.nowPlaying.durationMs * 100) : 0;
+  const renderedNowPlaying = currentTrackTransition.renderedTrack;
+  const renderedProgressMs = renderedNowPlaying?.id === state?.nowPlaying?.id
+    ? estimatedProgressMs
+    : renderedNowPlaying?.durationMs ?? 0;
+  const progress = renderedNowPlaying?.durationMs ? Math.min(100, renderedProgressMs / renderedNowPlaying.durationMs * 100) : 0;
 
   const remainingRequests = Math.max(0, (state?.limits.maxOpenRequests ?? 3) - (state?.limits.ownOpenRequests ?? 0));
   const requestedTrackIds = useMemo(() => {
@@ -316,19 +322,23 @@ export function GuestApp({ code }: { code: string }) {
           <section className={`now-playing ${renderedLockedNext ? "now-playing--with-next" : ""}`} aria-labelledby="now-title">
             <span className="now-playing__on-air" aria-hidden="true"><i />On Air</span>
             <div className="section-kicker" id="now-title">Läuft gerade</div>
-            {state?.nowPlaying ? (
-              <>
-                <a href={state.nowPlaying.spotifyUrl} target="_blank" rel="noreferrer"><Artwork track={state.nowPlaying} size="hero" /></a>
+            {renderedNowPlaying ? (
+              <div
+                className={`now-playing__current now-track-transition--${currentTrackTransition.phase}`}
+                key={renderedNowPlaying.id}
+                onAnimationEnd={currentTrackTransition.onAnimationEnd}
+              >
+                <a href={renderedNowPlaying.spotifyUrl} target="_blank" rel="noreferrer"><Artwork track={renderedNowPlaying} size="hero" /></a>
                 <div className="now-playing__content">
-                  <TrackMeta track={state.nowPlaying} />
-                  <div className="progress" role="progressbar" aria-label="Fortschritt des laufenden Songs" aria-valuemin={0} aria-valuemax={state.nowPlaying.durationMs} aria-valuenow={estimatedProgressMs}>
+                  <TrackMeta track={renderedNowPlaying} />
+                  <div className="progress" role="progressbar" aria-label="Fortschritt des laufenden Songs" aria-valuemin={0} aria-valuemax={renderedNowPlaying.durationMs} aria-valuenow={renderedProgressMs}>
                     <span style={{ width: `${progress}%` }} />
                   </div>
-                  <div className="progress-label"><span>{formatTime(estimatedProgressMs)}</span><span>−{formatTime(state.nowPlaying.durationMs - estimatedProgressMs)}</span></div>
-                  <div className="device-label"><span aria-hidden="true">●</span>{state.player.deviceName ?? "Kein aktives Gerät"}</div>
-                  <SpotifyLink href={state.nowPlaying.spotifyUrl} />
+                  <div className="progress-label"><span>{formatTime(renderedProgressMs)}</span><span>−{formatTime(renderedNowPlaying.durationMs - renderedProgressMs)}</span></div>
+                  <div className="device-label"><span aria-hidden="true">●</span>{state?.player.deviceName ?? "Kein aktives Gerät"}</div>
+                  <SpotifyLink href={renderedNowPlaying.spotifyUrl} />
                 </div>
-              </>
+              </div>
             ) : <EmptyState title="Noch spielt nichts">Starte Spotify auf dem Party-Gerät. Sobald Musik läuft, erscheint sie hier.</EmptyState>}
             {renderedLockedNext && (
               <aside

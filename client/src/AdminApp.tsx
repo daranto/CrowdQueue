@@ -4,6 +4,7 @@ import { Artwork, Brand, EmptyState, Loading, Notice, QueueRow, SpotifyLimitNoti
 import { QrExportDialog } from "./QrExportDialog";
 import { StatisticsPanel } from "./StatisticsPanel";
 import type { AdminState, ApiStatistics, StatisticsRange } from "./types";
+import { useTrackTransition } from "./useTrackTransition";
 
 export function AdminApp() {
   const [state, setState] = useState<AdminState | null>(null);
@@ -20,6 +21,7 @@ export function AdminApp() {
   const [statisticsRange, setStatisticsRange] = useState<StatisticsRange>("24h");
   const [statisticsLoading, setStatisticsLoading] = useState(false);
   const [statisticsError, setStatisticsError] = useState<string | null>(null);
+  const currentTrackTransition = useTrackTransition(state?.party?.nowPlaying ?? null);
   const rateLimited = state?.spotifyRateLimit?.limited ?? false;
   const spotifyConnected = state?.spotify?.connected ?? state?.connected ?? false;
   const spotifyUnavailable = rateLimited || !spotifyConnected;
@@ -157,6 +159,13 @@ export function AdminApp() {
   const elapsed = state?.party?.player.isPlaying && Number.isFinite(measuredAt) ? Math.max(0, playerClock - measuredAt) : 0;
   const playerProgressMs = currentTrack ? Math.min(currentTrack.durationMs, (state?.party?.player.progressMs ?? 0) + elapsed) : 0;
   const playerProgress = currentTrack?.durationMs ? Math.min(100, playerProgressMs / currentTrack.durationMs * 100) : 0;
+  const renderedCurrentTrack = currentTrackTransition.renderedTrack;
+  const renderedPlayerProgressMs = renderedCurrentTrack?.id === currentTrack?.id
+    ? playerProgressMs
+    : renderedCurrentTrack?.durationMs ?? 0;
+  const renderedPlayerProgress = renderedCurrentTrack?.durationMs
+    ? Math.min(100, renderedPlayerProgressMs / renderedCurrentTrack.durationMs * 100)
+    : playerProgress;
 
   async function togglePlayback() {
     if (!state?.party) return;
@@ -264,13 +273,17 @@ export function AdminApp() {
                     <span>Jetzt läuft</span>
                     <span className={state.party.player.isPlaying ? "admin-player__live" : "admin-player__live admin-player__live--paused"}><i />{state.party.player.isPlaying ? "Spielt" : "Pausiert"}</span>
                   </div>
-                  {currentTrack ? (
-                    <div className="admin-player__body">
-                      <Artwork track={currentTrack} size="hero" />
+                  {renderedCurrentTrack ? (
+                    <div
+                      className={`admin-player__body now-track-transition--${currentTrackTransition.phase}`}
+                      key={renderedCurrentTrack.id}
+                      onAnimationEnd={currentTrackTransition.onAnimationEnd}
+                    >
+                      <Artwork track={renderedCurrentTrack} size="hero" />
                       <div className="admin-player__details">
-                        <TrackMeta track={currentTrack} />
-                        <div className="progress" role="progressbar" aria-label="Fortschritt des laufenden Songs" aria-valuemin={0} aria-valuemax={currentTrack.durationMs} aria-valuenow={playerProgressMs}><span style={{ width: `${playerProgress}%` }} /></div>
-                        <div className="progress-label"><span>{formatTime(playerProgressMs)}</span><span>−{formatTime(currentTrack.durationMs - playerProgressMs)}</span></div>
+                        <TrackMeta track={renderedCurrentTrack} />
+                        <div className="progress" role="progressbar" aria-label="Fortschritt des laufenden Songs" aria-valuemin={0} aria-valuemax={renderedCurrentTrack.durationMs} aria-valuenow={renderedPlayerProgressMs}><span style={{ width: `${renderedPlayerProgress}%` }} /></div>
+                        <div className="progress-label"><span>{formatTime(renderedPlayerProgressMs)}</span><span>−{formatTime(renderedCurrentTrack.durationMs - renderedPlayerProgressMs)}</span></div>
                         <div className="admin-player__device"><span aria-hidden="true">●</span>{state.party.player.deviceName ?? "Kein aktives Gerät"}</div>
                       </div>
                     </div>
