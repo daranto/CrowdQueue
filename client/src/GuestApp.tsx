@@ -235,12 +235,19 @@ export function GuestApp({ code }: { code: string }) {
 
             <section className="search-panel" aria-labelledby="search-title">
               <div className="section-title-row"><div><span className="section-kicker">Dein Musikwunsch</span><h2 id="search-title">Song finden</h2></div><span>{remainingRequests === 0 ? "Kein Wunsch mehr frei" : `${remainingRequests} ${remainingRequests === 1 ? "Wunsch" : "Wünsche"} frei`}</span></div>
-              <label className="search-field">
+              <form
+                className="search-field"
+                role="search"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  event.currentTarget.querySelector("input")?.blur();
+                }}
+              >
                 <span className="sr-only">Song oder Künstler suchen</span>
                 <span aria-hidden="true">⌕</span>
-                <input aria-label="Song oder Künstler suchen" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={rateLimited ? "Spotify-Suche pausiert" : "Song oder Künstler …"} disabled={!state?.party.active || rateLimited} autoComplete="off" />
+                <input aria-label="Song oder Künstler suchen" type="search" enterKeyHint="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={rateLimited ? "Spotify-Suche pausiert" : "Song oder Künstler …"} disabled={!state?.party.active || rateLimited} autoComplete="off" />
                 {query && <button type="button" onClick={() => setQuery("")} aria-label="Suche leeren">×</button>}
-              </label>
+              </form>
               {requestFeedback && <Notice tone={requestFeedback.tone} live>{requestFeedback.text}</Notice>}
               {search.error && <Notice tone="error">{search.error}</Notice>}
               {search.loading && search.items.length === 0 && <Loading label="Spotify wird durchsucht …" />}

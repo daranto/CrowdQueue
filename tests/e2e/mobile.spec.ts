@@ -65,7 +65,10 @@ test("Gast kann mobil suchen, wünschen und voten", async ({ page, request }) =>
   await resumedStateRequest;
   await expect(page.getByRole("region", { name: "Song finden" })).toBeVisible();
   await expect(page.getByText("3 Wünsche frei")).toBeVisible();
-  await page.getByRole("searchbox", { name: "Song oder Künstler suchen" }).fill("Dua");
+  const searchbox = page.getByRole("searchbox", { name: "Song oder Künstler suchen" });
+  await searchbox.fill("Dua");
+  await searchbox.press("Enter");
+  await expect(searchbox).not.toBeFocused();
   await expect(page.getByRole("button", { name: /Song wünschen: Dance The Night/ })).toBeVisible();
   await page.getByRole("button", { name: /Song wünschen: Dance The Night/ }).click();
   await expect(page.getByRole("region", { name: "Song finden" }).getByRole("status")).toContainText(/gewünscht|Stimme/);
