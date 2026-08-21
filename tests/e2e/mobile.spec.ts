@@ -227,6 +227,42 @@ test("Display Wall zeigt ausschließlich Musikwünsche und passt sich dem Bildsc
   const response = await request.get("/api/admin/state", { headers: { "x-demo-admin": "true" } });
   const admin = await response.json();
   const displayUrl = `/p/${admin.party.party.code}/display`;
+  let showManyWishes = false;
+  await page.route(`**/api/parties/${admin.party.party.code}/state`, async (route) => {
+    const stateResponse = await route.fetch();
+    if (!showManyWishes) {
+      await route.fulfill({ response: stateResponse });
+      return;
+    }
+    const partyState = await stateResponse.json();
+    const template = partyState.nativeQueue[0];
+    const queueItem = (id: string, name: string, queueId: number, score: number) => ({
+      ...template,
+      id,
+      uri: `spotify:track:${id}`,
+      name,
+      queueId,
+      status: "pending",
+      score,
+      requestedAt: new Date(queueId * 1000).toISOString(),
+      requestedByMe: false,
+      votedByMe: false,
+      error: null,
+    });
+    await route.fulfill({
+      response: stateResponse,
+      json: {
+        ...partyState,
+        lockedNext: { ...queueItem("wall-wish-1", "Dance The Night", 901, 4), status: "locked" },
+        queue: [
+          queueItem("wall-wish-2", "Wunsch Nummer Zwei", 902, 3),
+          queueItem("wall-wish-3", "Wunsch Nummer Drei", 903, 2),
+          queueItem("wall-wish-4", "Wunsch Nummer Vier", 904, 1),
+          queueItem("wall-wish-5", "Wunsch Nummer Fünf", 905, 0),
+        ],
+      },
+    });
+  });
 
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto(displayUrl);
@@ -263,9 +299,24 @@ test("Display Wall zeigt ausschließlich Musikwünsche und passt sich dem Bildsc
   });
   expect(desktopLayout.queueX).toBeGreaterThan(desktopLayout.playerX);
   expect(desktopLayout.scrollWidth).toBeLessThanOrEqual(desktopLayout.width);
+  const ambientMotion = await page.evaluate(() => {
+    const vinyl = getComputedStyle(document.querySelector(".wall-now")!, "::before");
+    const glow = getComputedStyle(document.querySelector(".display-wall-page")!, "::before");
+    return {
+      vinylName: vinyl.animationName,
+      vinylDuration: Number.parseFloat(vinyl.animationDuration),
+      glowName: glow.animationName,
+      glowDuration: Number.parseFloat(glow.animationDuration),
+    };
+  });
+  expect(ambientMotion.vinylName).toContain("wall-vinyl-turn");
+  expect(ambientMotion.vinylDuration).toBeGreaterThanOrEqual(30);
+  expect(ambientMotion.glowName).toContain("wall-ambient-drift");
+  expect(ambientMotion.glowDuration).toBeGreaterThanOrEqual(15);
 
   const requested = await request.post(`/api/parties/${admin.party.party.code}/requests`, { data: { trackId: "demo-2" } });
   expect(requested.ok()).toBeTruthy();
+  showManyWishes = true;
   await page.reload();
 
   await expect(page.getByText("Dance The Night", { exact: true })).toBeVisible();
@@ -274,7 +325,12 @@ test("Display Wall zeigt ausschließlich Musikwünsche und passt sich dem Bildsc
   const compactQr = page.locator(".wall-lineup__scan img");
   await expect(compactQr).toBeVisible();
   const compactQrWidth = await compactQr.evaluate((element) => element.getBoundingClientRect().width);
+  expect(compactQrWidth).toBeGreaterThan(100);
   expect(largeQrWidth).toBeGreaterThan(compactQrWidth * 2);
+  await expect(page.locator(".wall-lineup__item")).toHaveCount(3);
+  await expect(page.getByText("Wunsch Nummer Drei", { exact: true })).toBeVisible();
+  await expect(page.getByText("Wunsch Nummer Vier", { exact: true })).toHaveCount(0);
+  await expect(page.locator(".wall-lineup__more")).toContainText("+ 2 weitere Titel warten");
   const queueTopGap = await page.evaluate(() => {
     const heading = document.querySelector(".wall-lineup__heading")?.getBoundingClientRect();
     const item = document.querySelector(".wall-lineup__item")?.getBoundingClientRect();
@@ -296,6 +352,7 @@ test("Display Wall zeigt ausschließlich Musikwünsche und passt sich dem Bildsc
   });
   expect(mobileLayout.queueY).toBeGreaterThan(mobileLayout.playerY);
   expect(mobileLayout.scrollWidth).toBeLessThanOrEqual(mobileLayout.width);
+  await expect(page.locator(".wall-lineup__item")).toHaveCount(3);
   await expect(compactQr).toBeVisible();
 });
 

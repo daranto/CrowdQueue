@@ -11,15 +11,7 @@ interface WallCue {
   locked: boolean;
 }
 
-function visibleCueLimit(): number {
-  const width = window.innerWidth;
-  const height = window.innerHeight;
-  if (width < 560) return height < 740 ? 2 : 3;
-  if (width < 900) return 4;
-  if (width < 1350 || height < 800) return 5;
-  if (width >= 1900 && height >= 1000) return 7;
-  return 6;
-}
+const MAX_VISIBLE_CUES = 3;
 
 function buildCues(state: PartyState): WallCue[] {
   const cues: WallCue[] = [];
@@ -44,7 +36,6 @@ export function DisplayWallApp({ code }: { code: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [clock, setClock] = useState(() => Date.now());
-  const [cueLimit, setCueLimit] = useState(visibleCueLimit);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -104,19 +95,6 @@ export function DisplayWallApp({ code }: { code: string }) {
     });
     return () => { active = false; };
   }, [state?.party.guestUrl]);
-  useEffect(() => {
-    let frame = 0;
-    const resize = () => {
-      window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => setCueLimit(visibleCueLimit()));
-    };
-    window.addEventListener("resize", resize);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.removeEventListener("resize", resize);
-    };
-  }, []);
-
   const progressMs = useMemo(() => {
     if (!state?.nowPlaying) return 0;
     const measuredAt = Date.parse(state.player.updatedAt);
@@ -125,7 +103,7 @@ export function DisplayWallApp({ code }: { code: string }) {
   }, [clock, state]);
   const progress = state?.nowPlaying?.durationMs ? Math.min(100, progressMs / state.nowPlaying.durationMs * 100) : 0;
   const cues = useMemo(() => state ? buildCues(state) : [], [state]);
-  const visibleCues = cues.slice(0, cueLimit);
+  const visibleCues = cues.slice(0, MAX_VISIBLE_CUES);
   const hiddenCueCount = Math.max(0, cues.length - visibleCues.length);
   const wallStyle = { "--wall-progress-angle": `${progress * 3.6}deg` } as CSSProperties;
 
