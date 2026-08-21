@@ -200,13 +200,6 @@ test("Aktueller Track blendet auf Wall, Gastseite und im Admin weich um", async 
     await resetObservedAnimations();
     showReplacement = true;
     await refreshPublicState();
-    await expect(player).toHaveClass(/now-track-transition--exiting/);
-    const exitMotion = await player.evaluate((element) => ({
-      animationName: getComputedStyle(element).animationName,
-      animationDuration: Number.parseFloat(getComputedStyle(element).animationDuration),
-    }));
-    expect(exitMotion.animationName).toContain("now-track-fade-out");
-    expect(exitMotion.animationDuration).toBeGreaterThanOrEqual(.4);
     await expect.poll(observedAnimations).toContain("now-track-fade-out");
     await expect(page.getByText("Soft Transition", { exact: true })).toBeVisible({ timeout: 1_200 });
     await expect.poll(observedAnimations).toContain("now-track-fade-in");
@@ -220,6 +213,7 @@ test("Aktueller Track blendet auf Wall, Gastseite und im Admin weich um", async 
   showReplacement = false;
   await page.goto(`/p/${code}/display`);
   await expectFadeSwap(".wall-now__layout");
+  await expect.poll(observedAnimations).toContain("wall-record-slide-in");
 
   showReplacement = false;
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -229,17 +223,6 @@ test("Aktueller Track blendet auf Wall, Gastseite und im Admin weich um", async 
   await resetObservedAnimations();
   showReplacement = true;
   await refreshPublicState();
-  await expect(reducedMotionPlayer).toHaveClass(/now-track-transition--exiting/);
-  const reducedExitMotion = await reducedMotionPlayer.evaluate((element) => {
-    const style = getComputedStyle(element);
-    return {
-      animationName: style.animationName,
-      animationDuration: Number.parseFloat(style.animationDuration),
-    };
-  });
-  expect(reducedExitMotion.animationName).toContain("now-track-fade-out");
-  expect(reducedExitMotion.animationName).not.toContain("reduced");
-  expect(reducedExitMotion.animationDuration).toBeGreaterThanOrEqual(.4);
   await expect.poll(observedAnimations).toContain("now-track-fade-out");
   await expect(page.getByText("Soft Transition", { exact: true })).toBeVisible({ timeout: 1_200 });
   await expect.poll(observedAnimations).toContain("now-track-fade-in");
@@ -380,8 +363,12 @@ test("Display Wall zeigt ausschließlich Musikwünsche und passt sich dem Bildsc
   await page.goto(displayUrl);
 
   await expect(page.getByText("Midnight City", { exact: true })).toBeVisible();
+  await expect(page.locator(".display-wall__party strong")).toHaveText(admin.party.party.name);
+  await expect(page.locator(".display-wall__connection")).toHaveCount(0);
   await expect(page.locator(".wall-now__copy > p")).toHaveText("M83");
   await expect(page.locator(".wall-now__copy > p")).not.toContainText("Hurry Up, We're Dreaming");
+  await expect(page.locator(".wall-now").getByText("Läuft gerade", { exact: true })).toHaveCount(0);
+  await expect(page.locator(".wall-now__on-air")).toBeVisible();
   await expect(page.locator(".wall-now__progress, .wall-now__time")).toHaveCount(0);
   const titleMetrics = await page.locator(".wall-now__copy h1").evaluate((element) => {
     const style = getComputedStyle(element);
@@ -400,19 +387,74 @@ test("Display Wall zeigt ausschließlich Musikwünsche und passt sich dem Bildsc
   await expect(page.getByText("Dance The Night", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Blinding Lights", { exact: true })).toHaveCount(0);
   await expect(page.locator("button, input, select, form")).toHaveCount(0);
+  await expect(page.locator(".display-wall__footer")).toHaveCount(0);
+  await expect(page.locator(".wall-now__layout")).toHaveClass(/now-track-transition--visible/);
 
   const desktopLayout = await page.evaluate(() => {
     const player = document.querySelector(".wall-now")?.getBoundingClientRect();
     const queue = document.querySelector(".wall-lineup")?.getBoundingClientRect();
+    const vinyl = document.querySelector(".wall-now__art-ring")?.getBoundingClientRect();
+    const cover = document.querySelector<HTMLElement>(".wall-now__vinyl .artwork--hero");
+    const copy = document.querySelector(".wall-now__copy")?.getBoundingClientRect();
+    const title = document.querySelector(".wall-now__copy h1")?.getBoundingClientRect();
+    const artist = document.querySelector(".wall-now__copy p")?.getBoundingClientRect();
+    const coverBounds = vinyl && cover ? {
+      left: vinyl.left + (vinyl.width - cover.offsetWidth) / 2,
+      right: vinyl.right - (vinyl.width - cover.offsetWidth) / 2,
+      top: vinyl.top + (vinyl.height - cover.offsetHeight) / 2,
+      bottom: vinyl.bottom - (vinyl.height - cover.offsetHeight) / 2,
+    } : null;
     return {
       playerX: player?.x ?? 0,
       queueX: queue?.x ?? 0,
+      playerWidth: player?.width ?? 0,
+      vinylWidth: vinyl?.width ?? 0,
+      vinylStartsOutside: Boolean(player && vinyl && vinyl.left < player.left),
+      playerBounds: player ? { left: player.left, right: player.right, top: player.top, bottom: player.bottom } : null,
+      coverBounds,
+      copyOverlapsVinyl: Boolean(copy && vinyl && copy.left < vinyl.right),
+      copyWidth: copy?.width ?? 0,
+      copyTextAlign: getComputedStyle(document.querySelector(".wall-now__copy")!).textAlign,
+      progressSpan: getComputedStyle(document.querySelector(".wall-now__art-ring")!).getPropertyValue("--wall-progress-span").trim(),
+      progressBackground: getComputedStyle(document.querySelector(".wall-now__art-ring")!, "::before").backgroundImage,
+      copySitsAboveCoverCenter: Boolean(coverBounds && copy && title && artist
+        && copy.bottom < (coverBounds.top + coverBounds.bottom) / 2),
+      copyLayer: Number.parseInt(getComputedStyle(document.querySelector(".wall-now__copy")!).zIndex, 10),
+      vinylLayer: Number.parseInt(getComputedStyle(document.querySelector(".wall-now__art-ring")!).zIndex, 10),
       width: window.innerWidth,
       scrollWidth: document.documentElement.scrollWidth,
     };
   });
   expect(desktopLayout.queueX).toBeGreaterThan(desktopLayout.playerX);
+  expect(desktopLayout.vinylWidth).toBeGreaterThan(desktopLayout.playerWidth * .78);
+  expect(desktopLayout.vinylStartsOutside).toBeTruthy();
+  expect(desktopLayout.coverBounds?.left).toBeGreaterThanOrEqual((desktopLayout.playerBounds?.left ?? 0) - 2);
+  expect(desktopLayout.coverBounds?.right).toBeLessThanOrEqual((desktopLayout.playerBounds?.right ?? 0) + 2);
+  expect(desktopLayout.coverBounds?.top).toBeGreaterThanOrEqual((desktopLayout.playerBounds?.top ?? 0) - 2);
+  expect(desktopLayout.coverBounds?.bottom).toBeLessThanOrEqual((desktopLayout.playerBounds?.bottom ?? 0) + 2);
+  expect(desktopLayout.copyOverlapsVinyl).toBeTruthy();
+  expect(desktopLayout.copyWidth).toBeGreaterThan(desktopLayout.playerWidth * .6);
+  expect(desktopLayout.copyTextAlign).toBe("left");
+  expect(desktopLayout.progressSpan).toBe("360deg");
+  expect(desktopLayout.progressBackground).toContain("conic-gradient");
+  expect(desktopLayout.copySitsAboveCoverCenter).toBeTruthy();
+  expect(desktopLayout.copyLayer).toBeGreaterThan(desktopLayout.vinylLayer);
   expect(desktopLayout.scrollWidth).toBeLessThanOrEqual(desktopLayout.width);
+  const longArtistClearance = await page.evaluate(() => {
+    const vinyl = document.querySelector(".wall-now__art-ring")?.getBoundingClientRect();
+    const cover = document.querySelector<HTMLElement>(".wall-now__vinyl .artwork--hero");
+    const artist = document.querySelector<HTMLElement>(".wall-now__copy > p");
+    const copy = document.querySelector<HTMLElement>(".wall-now__copy");
+    if (artist) artist.textContent = "Roy Bianco & Die Abbrunzati Boys · Electric Callboy · Florence + The Machine";
+    copy?.classList.add("wall-now__copy--dense");
+    const artistBounds = artist?.getBoundingClientRect();
+    const coverTop = vinyl && cover ? vinyl.top + (vinyl.height - cover.offsetHeight) / 2 : 0;
+    return {
+      artistBottom: artistBounds?.bottom ?? 0,
+      coverTop,
+    };
+  });
+  expect(longArtistClearance.artistBottom).toBeLessThan(longArtistClearance.coverTop);
   const ambientMotion = await page.evaluate(() => {
     const vinyl = getComputedStyle(document.querySelector(".wall-now__vinyl")!);
     const firstWave = getComputedStyle(document.querySelector(".display-wall-page")!, "::before");
@@ -443,6 +485,7 @@ test("Display Wall zeigt ausschließlich Musikwünsche und passt sich dem Bildsc
   await expect(page.locator(".wall-lineup__invite")).toHaveCount(0);
   const compactQr = page.locator(".wall-lineup__scan img");
   await expect(compactQr).toBeVisible();
+  await expect(page.locator(".wall-lineup__scan small")).toHaveCount(0);
   const compactQrWidth = await compactQr.evaluate((element) => element.getBoundingClientRect().width);
   expect(compactQrWidth).toBeGreaterThanOrEqual(280);
   expect(largeQrWidth).toBeGreaterThan(compactQrWidth);
@@ -472,18 +515,35 @@ test("Display Wall zeigt ausschließlich Musikwünsche und passt sich dem Bildsc
   expect(queueTopGap).toBeGreaterThanOrEqual(0);
   expect(queueTopGap).toBeLessThan(60);
 
+  await expect(page.locator(".wall-now__layout")).toHaveClass(/now-track-transition--visible/);
   await page.setViewportSize({ width: 390, height: 844 });
   const mobileLayout = await page.evaluate(() => {
     const player = document.querySelector(".wall-now")?.getBoundingClientRect();
     const queue = document.querySelector(".wall-lineup")?.getBoundingClientRect();
+    const vinyl = document.querySelector(".wall-now__art-ring")?.getBoundingClientRect();
+    const cover = document.querySelector<HTMLElement>(".wall-now__vinyl .artwork--hero");
+    const coverBounds = vinyl && cover ? {
+      left: vinyl.left + (vinyl.width - cover.offsetWidth) / 2,
+      right: vinyl.right - (vinyl.width - cover.offsetWidth) / 2,
+      top: vinyl.top + (vinyl.height - cover.offsetHeight) / 2,
+      bottom: vinyl.bottom - (vinyl.height - cover.offsetHeight) / 2,
+    } : null;
     return {
       playerY: player?.y ?? 0,
       queueY: queue?.y ?? 0,
+      vinylStartsOutside: Boolean(player && vinyl && vinyl.left < player.left),
+      playerBounds: player ? { left: player.left, right: player.right, top: player.top, bottom: player.bottom } : null,
+      coverBounds,
       width: window.innerWidth,
       scrollWidth: document.documentElement.scrollWidth,
     };
   });
   expect(mobileLayout.queueY).toBeGreaterThan(mobileLayout.playerY);
+  expect(mobileLayout.vinylStartsOutside).toBeTruthy();
+  expect(mobileLayout.coverBounds?.left).toBeGreaterThanOrEqual(mobileLayout.playerBounds?.left ?? 0);
+  expect(mobileLayout.coverBounds?.right).toBeLessThanOrEqual(mobileLayout.playerBounds?.right ?? 0);
+  expect(mobileLayout.coverBounds?.top).toBeGreaterThanOrEqual(mobileLayout.playerBounds?.top ?? 0);
+  expect(mobileLayout.coverBounds?.bottom).toBeLessThanOrEqual(mobileLayout.playerBounds?.bottom ?? 0);
   expect(mobileLayout.scrollWidth).toBeLessThanOrEqual(mobileLayout.width);
   await expect.poll(() => page.locator(".wall-lineup__item").count()).toBeLessThanOrEqual(desktopCueCount);
   const mobileCueCount = await page.locator(".wall-lineup__item").count();

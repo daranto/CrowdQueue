@@ -13,6 +13,7 @@ interface WallCue {
 }
 
 const MAX_RESPONSIVE_CUES = 6;
+const WALL_PROGRESS_ARC_DEGREES = 360;
 
 function buildCues(state: PartyState): WallCue[] {
   const cues: WallCue[] = [];
@@ -112,7 +113,9 @@ export function DisplayWallApp({ code }: { code: string }) {
   const progress = renderedNowPlaying?.durationMs ? Math.min(100, renderedProgressMs / renderedNowPlaying.durationMs * 100) : 0;
   const cues = useMemo(() => state ? buildCues(state) : [], [state]);
   const visibleCues = cues.slice(0, cueCapacity);
-  const wallStyle = { "--wall-progress-angle": `${progress * 3.6}deg` } as CSSProperties;
+  const wallStyle = {
+    "--wall-progress-angle": `${progress * WALL_PROGRESS_ARC_DEGREES / 100}deg`,
+  } as CSSProperties;
 
   useEffect(() => {
     const panel = lineupRef.current;
@@ -166,15 +169,11 @@ export function DisplayWallApp({ code }: { code: string }) {
             <span>{state.party.active ? "Party läuft" : "Party beendet"}</span>
             <strong>{state.party.name}</strong>
           </div>
-          <span className={`display-wall__connection ${error ? "display-wall__connection--off" : ""}`} role="status">
-            {error ? "Verbindung wird erneuert" : "Live verbunden"}
-          </span>
         </header>
 
         <main id="main" className="display-wall__stage">
           <section className="wall-now" aria-labelledby="wall-current-title">
             <div className="wall-now__status">
-              <span className="section-kicker">Läuft gerade</span>
               <span className={state.player.isPlaying ? "wall-now__on-air" : "wall-now__on-air wall-now__on-air--paused"}><i />{state.player.isPlaying ? "On Air" : "Pausiert"}</span>
             </div>
             {renderedNowPlaying ? (
@@ -188,7 +187,7 @@ export function DisplayWallApp({ code }: { code: string }) {
                     <Artwork track={renderedNowPlaying} size="hero" />
                   </div>
                 </div>
-                <div className="wall-now__copy">
+                <div className={`wall-now__copy ${renderedNowPlaying.name.length > 30 || renderedNowPlaying.artists.length > 42 ? "wall-now__copy--dense" : ""}`}>
                   <h1 id="wall-current-title">{renderedNowPlaying.name} {renderedNowPlaying.explicit && <ExplicitBadge />}</h1>
                   <p>{renderedNowPlaying.artists}</p>
                 </div>
@@ -224,7 +223,7 @@ export function DisplayWallApp({ code }: { code: string }) {
                 <div className="wall-lineup__footer">
                   <div className="wall-lineup__scan">
                     {qrDataUrl ? <img src={qrDataUrl} alt={`QR-Code für Musikwünsche bei ${state.party.name}`} /> : <i aria-hidden="true" />}
-                    <span><strong>Song wünschen</strong><small>Party-Code scannen</small></span>
+                    <span><strong>Song wünschen</strong></span>
                   </div>
                 </div>
               </>
@@ -237,10 +236,6 @@ export function DisplayWallApp({ code }: { code: string }) {
           </section>
         </main>
 
-        <footer className="display-wall__footer">
-          <span>Nur Anzeige · Aktualisiert sich automatisch</span>
-          <span><i aria-hidden="true" />{state.player.deviceName ?? "Kein aktives Spotify-Gerät"}</span>
-        </footer>
       </div>
     </div>
   );
