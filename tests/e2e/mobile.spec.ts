@@ -223,12 +223,73 @@ test("Gast kann mobil suchen, wünschen und voten", async ({ page, request }) =>
   expect(undersized).toEqual([]);
 });
 
+test("Display Wall zeigt ausschließlich Musikwünsche und passt sich dem Bildschirm an", async ({ page, request }) => {
+  const response = await request.get("/api/admin/state", { headers: { "x-demo-admin": "true" } });
+  const admin = await response.json();
+  const displayUrl = `/p/${admin.party.party.code}/display`;
+
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto(displayUrl);
+
+  await expect(page.getByText("Midnight City", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Song wünschen" })).toBeVisible();
+  const largeQr = page.locator(".wall-lineup__invite img");
+  await expect(largeQr).toBeVisible();
+  const largeQrWidth = await largeQr.evaluate((element) => element.getBoundingClientRect().width);
+  await expect(page.getByText("Dance The Night", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Blinding Lights", { exact: true })).toHaveCount(0);
+  await expect(page.locator("button, input, select, form")).toHaveCount(0);
+
+  const desktopLayout = await page.evaluate(() => {
+    const player = document.querySelector(".wall-now")?.getBoundingClientRect();
+    const queue = document.querySelector(".wall-lineup")?.getBoundingClientRect();
+    return {
+      playerX: player?.x ?? 0,
+      queueX: queue?.x ?? 0,
+      width: window.innerWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    };
+  });
+  expect(desktopLayout.queueX).toBeGreaterThan(desktopLayout.playerX);
+  expect(desktopLayout.scrollWidth).toBeLessThanOrEqual(desktopLayout.width);
+
+  const requested = await request.post(`/api/parties/${admin.party.party.code}/requests`, { data: { trackId: "demo-2" } });
+  expect(requested.ok()).toBeTruthy();
+  await page.reload();
+
+  await expect(page.getByText("Dance The Night", { exact: true })).toBeVisible();
+  await expect(page.getByText("Blinding Lights", { exact: true })).toHaveCount(0);
+  await expect(page.locator(".wall-lineup__invite")).toHaveCount(0);
+  const compactQr = page.locator(".wall-lineup__scan img");
+  await expect(compactQr).toBeVisible();
+  const compactQrWidth = await compactQr.evaluate((element) => element.getBoundingClientRect().width);
+  expect(largeQrWidth).toBeGreaterThan(compactQrWidth * 2);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileLayout = await page.evaluate(() => {
+    const player = document.querySelector(".wall-now")?.getBoundingClientRect();
+    const queue = document.querySelector(".wall-lineup")?.getBoundingClientRect();
+    return {
+      playerY: player?.y ?? 0,
+      queueY: queue?.y ?? 0,
+      width: window.innerWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    };
+  });
+  expect(mobileLayout.queueY).toBeGreaterThan(mobileLayout.playerY);
+  expect(mobileLayout.scrollWidth).toBeLessThanOrEqual(mobileLayout.width);
+  await expect(compactQr).toBeVisible();
+});
+
 test("Adminfluss ist auf mobilen Viewports vollständig erreichbar", async ({ page }) => {
   await page.setExtraHTTPHeaders({ "x-demo-admin": "true" });
   await page.goto("/admin");
   await expect(page.getByRole("heading", { name: "Admin" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Wiedergabe" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Song sofort spielen" })).toHaveCount(0);
+  const displayWallLink = page.getByRole("link", { name: /Display Wall öffnen/ });
+  await expect(displayWallLink).toBeVisible();
+  await expect(displayWallLink).toHaveAttribute("href", /\/p\/[A-Za-z0-9_-]+\/display$/);
   const player = page.getByRole("region", { name: "Spotify Player" });
   await expect(player).toBeVisible();
   await expect(player.getByText("Midnight City", { exact: true })).toBeVisible();

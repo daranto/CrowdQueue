@@ -251,6 +251,11 @@ export function AdminApp() {
                 <a href={state.party.party.guestUrl} target="_blank" rel="noreferrer">{state.party.party.guestUrl}</a>
                 <button className="secondary-button" type="button" onClick={() => void navigator.clipboard.writeText(state.party!.party.guestUrl).then(() => setMessage("Gast-Link kopiert."))}>Link kopieren</button>
                 {state.qrDataUrl && <button className="secondary-button qr-export-trigger" type="button" onClick={() => setQrExportOpen(true)}>QR-Code drucken & exportieren</button>}
+                <a className="display-wall-link" href={`${state.party.party.guestUrl}/display`} target="_blank" rel="noreferrer">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8M12 17v4" /><path d="m10 8 5 2.5-5 2.5V8Z" /></svg>
+                  <span><strong>Display Wall öffnen</strong><small>Für Fernseher oder Monitor</small></span>
+                  <i aria-hidden="true">↗</i>
+                </a>
               </div>
               <div className="admin-card controls">
                 <span className="section-kicker">Spotify Connect</span><h2>Wiedergabe</h2>
