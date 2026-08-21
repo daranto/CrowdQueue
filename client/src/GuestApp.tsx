@@ -198,7 +198,7 @@ export function GuestApp({ code }: { code: string }) {
           <p>Hier entsteht eure Setlist – Song suchen, wünschen und gemeinsam nach oben voten.</p>
         </div>
 
-        <div className={`guest-stage ${state?.lockedNext ? "guest-stage--with-next" : ""}`}>
+        <div className="guest-stage">
           <section className={`now-playing ${state?.lockedNext ? "now-playing--with-next" : ""}`} aria-labelledby="now-title">
             <span className="now-playing__on-air" aria-hidden="true"><i />On Air</span>
             <div className="section-kicker" id="now-title">Läuft gerade</div>

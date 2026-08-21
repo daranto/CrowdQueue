@@ -86,24 +86,39 @@ test("Fest eingeplanter Track bleibt in derselben Player-Karte", async ({ page, 
   await expect(page.locator(".locked-card")).toHaveCount(0);
 
   const desktop = await page.evaluate(() => {
-    const currentRect = document.querySelector(".now-playing__content")?.getBoundingClientRect();
-    const nextRect = document.querySelector(".now-playing__next")?.getBoundingClientRect();
-    return { currentX: currentRect?.x ?? 0, nextX: nextRect?.x ?? 0 };
+    const current = document.querySelector(".now-playing__content");
+    const next = document.querySelector(".now-playing__next");
+    const currentRect = current?.getBoundingClientRect();
+    const nextRect = next?.getBoundingClientRect();
+    return {
+      currentX: currentRect?.x ?? 0,
+      nextX: nextRect?.x ?? 0,
+      animationName: next ? getComputedStyle(next).animationName : "",
+      animationDuration: next ? Number.parseFloat(getComputedStyle(next).animationDuration) : 0,
+    };
   });
   expect(desktop.nextX).toBeGreaterThan(desktop.currentX);
+  expect(desktop.animationName).toContain("next-track-enter-inline");
+  expect(desktop.animationDuration).toBeGreaterThan(0.5);
 
   await page.setViewportSize({ width: 390, height: 844 });
   const mobile = await page.evaluate(() => {
-    const currentRect = document.querySelector(".now-playing__content")?.getBoundingClientRect();
-    const nextRect = document.querySelector(".now-playing__next")?.getBoundingClientRect();
+    const current = document.querySelector(".now-playing__content");
+    const next = document.querySelector(".now-playing__next");
+    const currentRect = current?.getBoundingClientRect();
+    const nextRect = next?.getBoundingClientRect();
     return {
       currentY: currentRect?.y ?? 0,
       nextY: nextRect?.y ?? 0,
+      animationName: next ? getComputedStyle(next).animationName : "",
+      animationDuration: next ? Number.parseFloat(getComputedStyle(next).animationDuration) : 0,
       viewportWidth: window.innerWidth,
       scrollWidth: document.documentElement.scrollWidth,
     };
   });
   expect(mobile.nextY).toBeGreaterThan(mobile.currentY);
+  expect(mobile.animationName).toContain("next-track-enter-stacked");
+  expect(mobile.animationDuration).toBeGreaterThan(0.5);
   expect(mobile.scrollWidth).toBeLessThanOrEqual(mobile.viewportWidth);
 });
 
