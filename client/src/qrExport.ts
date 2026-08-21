@@ -4,7 +4,8 @@ import { cardGrid, type QrExportOptions } from "./qrExportOptions";
 
 const PAGE_WIDTH = 210;
 const PAGE_HEIGHT = 297;
-const LIME = [104, 72, 238] as const;
+const VIOLET = [104, 72, 238] as const;
+const ORANGE = [255, 111, 75] as const;
 const BLACK = [23, 21, 47] as const;
 const MUTED = [105, 98, 122] as const;
 
@@ -54,7 +55,7 @@ function dataUrlBlob(dataUrl: string): Blob {
   return new Blob([bytes], { type: mime });
 }
 
-function drawBrand(doc: jsPDF, x: number, y: number, scale: number, accent: PdfColor = LIME): void {
+function drawBrand(doc: jsPDF, x: number, y: number, scale: number, accent: PdfColor = VIOLET): void {
   const darkAccent = accent[0] < 80 && accent[1] < 80 && accent[2] < 80;
   setFillColor(doc, accent);
   doc.circle(x + 3.2 * scale, y + 3.2 * scale, 3.2 * scale, "F");
@@ -66,7 +67,7 @@ function drawBrand(doc: jsPDF, x: number, y: number, scale: number, accent: PdfC
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9 * scale);
   setTextColor(doc, accent);
-  doc.text("Party-Playlist", x + 8.3 * scale, y + 5.15 * scale);
+  doc.text("CrowdQueue", x + 8.3 * scale, y + 5.15 * scale);
 }
 
 function partyTitleLines(doc: jsPDF, partyName: string, maxWidth: number, maxLines: number, initialSize: number, minimumSize: number): string[] {
@@ -87,18 +88,20 @@ function drawPoster(doc: jsPDF, options: QrExportOptions, qrDataUrl: string): vo
   doc.rect(0, 0, PAGE_WIDTH, PAGE_HEIGHT, "F");
 
   if (color) {
-    setFillColor(doc, LIME);
+    setFillColor(doc, VIOLET);
     doc.rect(0, 0, PAGE_WIDTH, 5, "F");
+    setFillColor(doc, ORANGE);
+    doc.rect(PAGE_WIDTH - 42, 0, 42, 5, "F");
   } else {
     setDrawColor(doc, BLACK);
     doc.setLineWidth(0.8);
     doc.rect(10, 10, PAGE_WIDTH - 20, PAGE_HEIGHT - 20);
   }
 
-  drawBrand(doc, 16, 17, 1.25, color ? LIME : BLACK);
+  drawBrand(doc, 16, 17, 1.25, color ? VIOLET : BLACK);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
-  setTextColor(doc, color ? LIME : BLACK);
+  setTextColor(doc, color ? VIOLET : BLACK);
   doc.text("DEINE PARTY. DEINE MUSIK.", 16, 42);
 
   setTextColor(doc, BLACK);
@@ -111,21 +114,22 @@ function drawPoster(doc: jsPDF, options: QrExportOptions, qrDataUrl: string): vo
   const qrSize = 116;
   const qrX = (PAGE_WIDTH - qrSize) / 2;
   const qrY = panelY + 8;
-  setDrawColor(doc, color ? LIME : BLACK);
+  setDrawColor(doc, color ? VIOLET : BLACK);
   doc.setLineWidth(color ? 1.25 : 0.55);
   doc.roundedRect(qrX - 3.5, qrY - 3.5, qrSize + 7, qrSize + 7, 3, 3);
   doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize, undefined, "FAST");
 
   setTextColor(doc, BLACK);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(16.5);
-  doc.text("Musikwünsche abgeben & Favoriten wählen", PAGE_WIDTH / 2, qrY + qrSize + 17, { align: "center" });
+  doc.setFontSize(19);
+  doc.text("SCAN & PLAY", PAGE_WIDTH / 2, qrY + qrSize + 18, { align: "center" });
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(10.5);
-  doc.text("Songs wünschen - Warteschlange sehen - Favoriten wählen", PAGE_WIDTH / 2, qrY + qrSize + 26, { align: "center" });
-  doc.setFontSize(8.5);
+  doc.setFontSize(11);
+  doc.text("Song wünschen. Mitvoten.", PAGE_WIDTH / 2, qrY + qrSize + 27, { align: "center" });
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
   setTextColor(doc, MUTED);
-  doc.text("Ohne Anmeldung. Einfach Kamera öffnen und QR-Code scannen.", PAGE_WIDTH / 2, qrY + qrSize + 36, { align: "center" });
+  doc.text("KEINE APP. KEIN LOGIN.", PAGE_WIDTH / 2, qrY + qrSize + 36, { align: "center" });
 
   setTextColor(doc, color ? MUTED : BLACK);
   doc.setFont("helvetica", "normal");
@@ -138,49 +142,51 @@ function drawPoster(doc: jsPDF, options: QrExportOptions, qrDataUrl: string): vo
 
 function drawCard(doc: jsPDF, options: QrExportOptions, qrDataUrl: string, x: number, y: number, width: number, height: number): void {
   const color = options.tone === "color";
-  const compact = options.cardCount >= 6;
-  const inset = compact ? 4 : 6;
+  const compact = height < 105 || width < 105;
+  const micro = height < 75 || width < 70;
+  const inset = micro ? 3.2 : compact ? 4 : 6;
 
   doc.setFillColor(255, 255, 255);
   doc.rect(x, y, width, height, "F");
   if (color) {
-    doc.setFillColor(...LIME);
-    doc.rect(x, y, width, compact ? 2.4 : 3.2, "F");
+    doc.setFillColor(...VIOLET);
+    doc.rect(x, y, width, micro ? 2.1 : compact ? 2.6 : 3.2, "F");
+    doc.setFillColor(...ORANGE);
+    doc.rect(x + width - Math.min(width * 0.22, 18), y, Math.min(width * 0.22, 18), micro ? 2.1 : compact ? 2.6 : 3.2, "F");
   }
 
-  const brandScale = compact ? 0.56 : 0.75;
-  drawBrand(doc, x + inset, y + (compact ? 4.2 : 6), brandScale, color ? LIME : BLACK);
+  const brandScale = micro ? 0.47 : compact ? 0.56 : 0.75;
+  drawBrand(doc, x + inset, y + (micro ? 3.3 : compact ? 4.2 : 6), brandScale, color ? VIOLET : BLACK);
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(compact ? 6.8 : 9);
+  doc.setFontSize(micro ? 5.8 : compact ? 6.8 : 9);
   doc.setTextColor(...BLACK);
-  const partyLabelY = y + (compact ? 13 : 18);
+  const partyLabelY = y + (micro ? 10.5 : compact ? 13 : 18);
   doc.text(ellipsize(doc, options.partyName, width - inset * 2), x + width / 2, partyLabelY, { align: "center" });
 
-  const footerHeight = compact ? 10 : 16;
-  const qrTop = partyLabelY + (compact ? 2.5 : 4);
+  const footerHeight = micro ? 11.5 : compact ? 13 : 18;
+  const qrTop = partyLabelY + (micro ? 3.5 : compact ? 3.2 : 4);
   const qrSize = Math.min(
-    compact ? 50 : 72,
+    micro ? 48 : compact ? 58 : 78,
     width - inset * 2,
-    height - (qrTop - y) - footerHeight - 2,
+    height - (qrTop - y) - footerHeight - (micro ? 1 : 2),
   );
+  if (color) {
+    setDrawColor(doc, VIOLET);
+    doc.setLineWidth(micro ? 0.45 : 0.65);
+    doc.roundedRect(x + (width - qrSize) / 2 - 1.3, qrTop - 1.3, qrSize + 2.6, qrSize + 2.6, 1.4, 1.4);
+  }
   doc.addImage(qrDataUrl, "PNG", x + (width - qrSize) / 2, qrTop, qrSize, qrSize, undefined, "FAST");
 
-  const footerY = y + height - (compact ? 5 : 8);
+  const ctaY = y + height - (micro ? 6.2 : compact ? 7.2 : 10.5);
   doc.setTextColor(...BLACK);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(compact ? 5.9 : 8.8);
-  if (compact) {
-    doc.text(["MUSIKWÜNSCHE ABGEBEN", "& FAVORITEN WÄHLEN"], x + width / 2, footerY - 2.4, { align: "center", lineHeightFactor: 1.05 });
-  } else {
-    doc.text("Musikwünsche abgeben & Favoriten wählen", x + width / 2, footerY, { align: "center" });
-  }
-  if (!compact) {
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(6.5);
-    doc.setTextColor(...MUTED);
-    doc.text("Keine Anmeldung nötig", x + width / 2, footerY + 5, { align: "center" });
-  }
+  doc.setFontSize(micro ? 6.8 : compact ? 8 : 11.5);
+  doc.text("SCAN & PLAY", x + width / 2, ctaY, { align: "center" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(micro ? 4.2 : compact ? 5.3 : 7);
+  doc.setTextColor(...MUTED);
+  doc.text("WÜNSCHEN + VOTEN", x + width / 2, ctaY + (micro ? 3.5 : compact ? 4.2 : 5.5), { align: "center" });
 }
 
 function drawCutLines(doc: jsPDF, columns: number, rows: number, margin: number, cellWidth: number, cellHeight: number): void {

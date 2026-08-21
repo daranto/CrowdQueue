@@ -313,18 +313,28 @@ button:disabled { opacity: .46; cursor: not-allowed; transform: none !important;
 .qr-preview-poster > span { display: grid; place-items: center; width: 88%; aspect-ratio: 1; margin: auto 0; padding: 5%; border: 3px solid var(--accent); border-radius: 5%; background: white; }
 .qr-paper-preview--mono .qr-preview-poster > span { border-color: #17152f; }
 .qr-preview-poster img { width: 100%; }
-.qr-preview-poster b { margin: 8% 0 3%; font-size: clamp(.7rem, 1.8vw, 1rem); }
+.qr-preview-poster b { margin: 7% 0 0; font-family: var(--display); font-size: clamp(.85rem, 2vw, 1.15rem); letter-spacing: -.03em; text-transform: uppercase; }
+.qr-preview-poster em { color: #69627a; font-size: clamp(.5rem, 1.3vw, .72rem); font-style: normal; }
 .qr-preview-sheet { height: 100%; display: grid; padding: 4%; }
-.qr-preview-card { min-width: 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2%; padding: 3%; border: 1px dashed #979990; border-top: 3px solid var(--accent); overflow: hidden; }
+.qr-preview-card { position: relative; min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; justify-items: center; align-items: center; gap: 1%; padding: 3%; border: 1px dashed #979990; border-top: 3px solid var(--accent); overflow: hidden; }
+.qr-preview-card::after { content: ""; position: absolute; top: 0; right: 0; width: 22%; height: 3px; background: var(--orange); }
 .qr-paper-preview--mono .qr-preview-card { border-top: 1px dashed #979990; }
-.qr-preview-card small { max-width: 100%; color: #202119; font-size: clamp(.34rem, .85vw, .58rem); font-weight: 800; white-space: nowrap; }
-.qr-preview-card img { width: min(70%, 78px); }
-.qr-preview-card strong { display: grid; max-width: 100%; color: #202119; font-size: clamp(.28rem, .72vw, .5rem); line-height: 1.05; text-align: center; text-transform: uppercase; white-space: normal; }
-.qr-preview-sheet--dense .qr-preview-card { gap: 1%; padding: 2%; }
-.qr-preview-sheet--dense .qr-preview-card img { width: min(58%, 62px); }
+.qr-paper-preview--mono .qr-preview-card::after { display: none; }
+.qr-preview-card small { max-width: 100%; color: var(--accent-strong); font-size: clamp(.34rem, .82vw, .56rem); font-weight: 850; letter-spacing: .04em; white-space: nowrap; }
+.qr-paper-preview--mono .qr-preview-card small { color: #202119; }
+.qr-preview-code { display: grid; min-height: 0; place-items: center; align-self: stretch; }
+.qr-preview-code img { display: block; width: min(76%, 78px); max-height: 100%; aspect-ratio: 1; object-fit: contain; padding: 2%; border: 1px solid var(--accent); border-radius: 4px; }
+.qr-paper-preview--mono .qr-preview-code img { border-color: #202119; }
+.qr-preview-card strong { max-width: 100%; color: #202119; font-family: var(--display); font-size: clamp(.38rem, .9vw, .62rem); line-height: 1.2; text-align: center; text-transform: uppercase; white-space: nowrap; }
+.qr-preview-card em { max-width: 100%; color: #69627a; font-size: clamp(.25rem, .56vw, .39rem); font-style: normal; line-height: 1.2; text-align: center; text-transform: uppercase; white-space: nowrap; }
+.qr-preview-sheet--dense .qr-preview-card { padding: 2.25%; border-top-width: 2px; }
+.qr-preview-sheet--dense .qr-preview-card::after { height: 2px; }
+.qr-preview-sheet--dense .qr-preview-code img { width: min(62%, 56px); }
 .qr-preview-sheet--dense .qr-preview-card small { font-size: clamp(.29rem, .68vw, .48rem); }
-.qr-preview-sheet--dense .qr-preview-card strong { font-size: clamp(.25rem, .6vw, .43rem); }
-.qr-preview-sheet--very-dense .qr-preview-card img { width: min(50%, 52px); }
+.qr-preview-sheet--dense .qr-preview-card strong { font-size: clamp(.34rem, .72vw, .5rem); }
+.qr-preview-sheet--narrow .qr-preview-code img { width: min(58%, 48px); }
+.qr-preview-sheet--narrow .qr-preview-card em { font-size: clamp(.22rem, .48vw, .34rem); }
+.qr-preview-sheet--very-dense .qr-preview-code img { width: min(54%, 44px); }
 .qr-export-options { display: grid; gap: 1rem; }
 .qr-export-options fieldset { display: grid; gap: .55rem; padding: 0; margin: 0; border: 0; }
 .qr-export-options legend, .qr-count-select > span { margin-bottom: .5rem; color: #d5d0e3; font-family: var(--utility); font-size: .7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }

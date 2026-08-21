@@ -128,13 +128,30 @@ test("Admin kann QR-Druckvorlagen konfigurieren und als PDF laden", async ({ pag
   if (process.env.QR_QA_DIR) await posterDownload.saveAs(`${process.env.QR_QA_DIR}/${testInfo.project.name}-poster-farbe.pdf`);
 
   await dialog.getByRole("radio", { name: /Kartenbogen/ }).check();
+  await dialog.getByLabel("Anzahl pro A4-Seite").selectOption("8");
+  await expect(dialog.getByText("Scan & Play")).toHaveCount(8);
+  const clippedEightCardText = await dialog.locator(".qr-preview-card small, .qr-preview-card strong, .qr-preview-card em").evaluateAll((elements) =>
+    elements.flatMap((element) => element.scrollWidth > element.clientWidth || element.scrollHeight > element.clientHeight
+      ? [{ text: element.textContent, client: [element.clientWidth, element.clientHeight], scroll: [element.scrollWidth, element.scrollHeight] }]
+      : []),
+  );
+  expect(clippedEightCardText).toEqual([]);
+
+  const eightCardDownloadPromise = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "A4-PDF herunterladen" }).click();
+  const eightCardDownload = await eightCardDownloadPromise;
+  expect(eightCardDownload.suggestedFilename()).toMatch(/a4-8-karten-farbe\.pdf$/);
+  if (process.env.QR_QA_DIR) await eightCardDownload.saveAs(`${process.env.QR_QA_DIR}/${testInfo.project.name}-8-karten-farbe.pdf`);
+
   await dialog.getByLabel("Anzahl pro A4-Seite").selectOption("12");
   await dialog.getByRole("radio", { name: /Schwarzweiß/ }).check();
-  await expect(dialog.getByText("Musikwünsche abgeben")).toHaveCount(12);
-  const clippedPreviewText = await dialog.locator(".qr-preview-card small, .qr-preview-card strong").evaluateAll((elements) =>
-    elements.filter((element) => element.scrollWidth > element.clientWidth || element.scrollHeight > element.clientHeight).length,
+  await expect(dialog.getByText("Scan & Play")).toHaveCount(12);
+  const clippedPreviewText = await dialog.locator(".qr-preview-card small, .qr-preview-card strong, .qr-preview-card em").evaluateAll((elements) =>
+    elements.flatMap((element) => element.scrollWidth > element.clientWidth || element.scrollHeight > element.clientHeight
+      ? [{ text: element.textContent, client: [element.clientWidth, element.clientHeight], scroll: [element.scrollWidth, element.scrollHeight] }]
+      : []),
   );
-  expect(clippedPreviewText).toBe(0);
+  expect(clippedPreviewText).toEqual([]);
 
   const downloadPromise = page.waitForEvent("download");
   await dialog.getByRole("button", { name: "A4-PDF herunterladen" }).click();
