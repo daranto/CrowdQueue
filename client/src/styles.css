@@ -713,13 +713,6 @@ button:disabled { opacity: .46; cursor: not-allowed; transform: none !important;
   .wall-lineup__scan img, .wall-lineup__scan > i { width: 210px; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
-  .wall-now__vinyl--spinning { animation-duration: 2.7s !important; animation-iteration-count: infinite !important; }
-  .display-wall-page::before { animation-duration: 42s !important; animation-iteration-count: infinite !important; }
-  .display-wall-page::after { animation-duration: 52s !important; animation-iteration-count: infinite !important; }
-}
-
 @media (forced-colors: active) {
   .live-dot, .admin-status i { border: 2px solid ButtonText; }
   .progress span { background: Highlight; }

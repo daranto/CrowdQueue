@@ -190,7 +190,7 @@ export function DisplayWallApp({ code }: { code: string }) {
                 </div>
                 <div className="wall-now__copy">
                   <h1 id="wall-current-title">{renderedNowPlaying.name} {renderedNowPlaying.explicit && <ExplicitBadge />}</h1>
-                  <p>{renderedNowPlaying.artists}<span> · </span>{renderedNowPlaying.album}</p>
+                  <p>{renderedNowPlaying.artists}</p>
                 </div>
               </div>
             ) : (

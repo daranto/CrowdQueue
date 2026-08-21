@@ -221,6 +221,31 @@ test("Aktueller Track blendet auf Wall, Gastseite und im Admin weich um", async 
   await page.goto(`/p/${code}/display`);
   await expectFadeSwap(".wall-now__layout");
 
+  showReplacement = false;
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto(`/p/${code}/display`);
+  const reducedMotionPlayer = page.locator(".wall-now__layout");
+  await expect(reducedMotionPlayer).toHaveClass(/now-track-transition--visible/);
+  await resetObservedAnimations();
+  showReplacement = true;
+  await refreshPublicState();
+  await expect(reducedMotionPlayer).toHaveClass(/now-track-transition--exiting/);
+  const reducedExitMotion = await reducedMotionPlayer.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      animationName: style.animationName,
+      animationDuration: Number.parseFloat(style.animationDuration),
+    };
+  });
+  expect(reducedExitMotion.animationName).toContain("now-track-fade-out");
+  expect(reducedExitMotion.animationName).not.toContain("reduced");
+  expect(reducedExitMotion.animationDuration).toBeGreaterThanOrEqual(.4);
+  await expect.poll(observedAnimations).toContain("now-track-fade-out");
+  await expect(page.getByText("Soft Transition", { exact: true })).toBeVisible({ timeout: 1_200 });
+  await expect.poll(observedAnimations).toContain("now-track-fade-in");
+  await expect(reducedMotionPlayer).toHaveClass(/now-track-transition--visible/, { timeout: 1_200 });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+
   await page.unroute(`**/api/parties/${code}/state`);
   let showAdminReplacement = false;
   await page.route("**/api/admin/state*", async (route) => {
@@ -355,6 +380,8 @@ test("Display Wall zeigt ausschließlich Musikwünsche und passt sich dem Bildsc
   await page.goto(displayUrl);
 
   await expect(page.getByText("Midnight City", { exact: true })).toBeVisible();
+  await expect(page.locator(".wall-now__copy > p")).toHaveText("M83");
+  await expect(page.locator(".wall-now__copy > p")).not.toContainText("Hurry Up, We're Dreaming");
   await expect(page.locator(".wall-now__progress, .wall-now__time")).toHaveCount(0);
   const titleMetrics = await page.locator(".wall-now__copy h1").evaluate((element) => {
     const style = getComputedStyle(element);
