@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type AnimationEvent as ReactAnimationEvent } from "react";
 import { ApiError, api, formatTime } from "./api";
 import { Artwork, Brand, EmptyState, Loading, Notice, QueueRow, SearchResult, SpotifyLimitNotice, SpotifyLink, TrackMeta } from "./components";
 import type { PartyState, Track } from "./types";
 import { useSearch } from "./useSearch";
+
+type NextTrackPhase = "entering" | "visible" | "exiting";
+
+const NEXT_TRACK_EXIT_FALLBACK_MS = 700;
 
 export function GuestApp({ code }: { code: string }) {
   const [state, setState] = useState<PartyState | null>(null);
@@ -13,8 +17,50 @@ export function GuestApp({ code }: { code: string }) {
   const [query, setQuery] = useState("");
   const [busyId, setBusyId] = useState<string | number | null>(null);
   const [progressClock, setProgressClock] = useState(() => Date.now());
+  const [renderedLockedNext, setRenderedLockedNext] = useState<Track | null>(null);
+  const [nextTrackPhase, setNextTrackPhaseState] = useState<NextTrackPhase>("visible");
+  const renderedLockedNextRef = useRef<Track | null>(null);
+  const pendingLockedNextRef = useRef<Track | null>(null);
+  const nextTrackPhaseRef = useRef<NextTrackPhase>("visible");
+  const nextTrackExitTimerRef = useRef<number | null>(null);
   const rateLimited = state?.spotifyRateLimit.limited ?? false;
   const search = useSearch(`/api/parties/${code}/search`, rateLimited ? "" : query);
+
+  const setNextTrackPhase = useCallback((phase: NextTrackPhase) => {
+    nextTrackPhaseRef.current = phase;
+    setNextTrackPhaseState(phase);
+  }, []);
+
+  const clearNextTrackExitTimer = useCallback(() => {
+    if (nextTrackExitTimerRef.current !== null) window.clearTimeout(nextTrackExitTimerRef.current);
+    nextTrackExitTimerRef.current = null;
+  }, []);
+
+  const showNextTrack = useCallback((track: Track) => {
+    renderedLockedNextRef.current = track;
+    setRenderedLockedNext(track);
+    setNextTrackPhase("entering");
+  }, [setNextTrackPhase]);
+
+  const finishNextTrackExit = useCallback(() => {
+    clearNextTrackExitTimer();
+    const pending = pendingLockedNextRef.current;
+    pendingLockedNextRef.current = null;
+    if (pending) {
+      showNextTrack(pending);
+      return;
+    }
+    renderedLockedNextRef.current = null;
+    setRenderedLockedNext(null);
+    setNextTrackPhase("visible");
+  }, [clearNextTrackExitTimer, setNextTrackPhase, showNextTrack]);
+
+  const startNextTrackExit = useCallback(() => {
+    if (!renderedLockedNextRef.current || nextTrackPhaseRef.current === "exiting") return;
+    setNextTrackPhase("exiting");
+    clearNextTrackExitTimer();
+    nextTrackExitTimerRef.current = window.setTimeout(finishNextTrackExit, NEXT_TRACK_EXIT_FALLBACK_MS);
+  }, [clearNextTrackExitTimer, finishNextTrackExit, setNextTrackPhase]);
 
   const load = useCallback(async (announce = false) => {
     try {
@@ -30,6 +76,37 @@ export function GuestApp({ code }: { code: string }) {
   }, [code]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const incoming = state?.lockedNext ?? null;
+    const rendered = renderedLockedNextRef.current;
+
+    if (!incoming) {
+      pendingLockedNextRef.current = null;
+      if (rendered) startNextTrackExit();
+      return;
+    }
+
+    if (!rendered) {
+      pendingLockedNextRef.current = null;
+      showNextTrack(incoming);
+      return;
+    }
+
+    if (rendered.id === incoming.id) {
+      renderedLockedNextRef.current = incoming;
+      setRenderedLockedNext(incoming);
+      pendingLockedNextRef.current = null;
+      if (nextTrackPhaseRef.current === "exiting") {
+        clearNextTrackExitTimer();
+        setNextTrackPhase("visible");
+      }
+      return;
+    }
+
+    pendingLockedNextRef.current = incoming;
+    startNextTrackExit();
+  }, [clearNextTrackExitTimer, setNextTrackPhase, showNextTrack, startNextTrackExit, state?.lockedNext]);
+  useEffect(() => () => clearNextTrackExitTimer(), [clearNextTrackExitTimer]);
   useEffect(() => {
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible" && navigator.onLine) void load();
@@ -178,6 +255,15 @@ export function GuestApp({ code }: { code: string }) {
     return ids;
   }, [state]);
 
+  const handleNextTrackAnimationEnd = (event: ReactAnimationEvent<HTMLElement>) => {
+    if (event.target !== event.currentTarget) return;
+    if (event.animationName.includes("next-track-enter") && nextTrackPhaseRef.current === "entering") {
+      setNextTrackPhase("visible");
+    } else if (event.animationName.includes("next-track-exit") && nextTrackPhaseRef.current === "exiting") {
+      finishNextTrackExit();
+    }
+  };
+
   if (loading) return <main id="main" className="shell"><Loading label="Party wird geladen …" /></main>;
 
   return (
@@ -193,13 +279,17 @@ export function GuestApp({ code }: { code: string }) {
           {message && <Notice tone="success" live>{message}</Notice>}
         </div>
         <div className="party-heading">
-          <div><span className={`live-dot ${state?.party.active ? "" : "live-dot--off"}`} aria-hidden="true" /><span>{state?.party.active ? "Party läuft" : "Party beendet"}</span></div>
+          <div>
+            <span className={`live-dot ${state?.party.active ? "" : "live-dot--off"}`} aria-hidden="true" />
+            <span>{state?.party.active ? "Party läuft" : "Party beendet"}</span>
+            {state?.party.active && <span className="party-heading__signal" aria-hidden="true"><i /><i /><i /></span>}
+          </div>
           <h1>{state?.party.name ?? "Party"}</h1>
           <p>Hier entsteht eure Setlist – Song suchen, wünschen und gemeinsam nach oben voten.</p>
         </div>
 
         <div className="guest-stage">
-          <section className={`now-playing ${state?.lockedNext ? "now-playing--with-next" : ""}`} aria-labelledby="now-title">
+          <section className={`now-playing ${renderedLockedNext ? "now-playing--with-next" : ""}`} aria-labelledby="now-title">
             <span className="now-playing__on-air" aria-hidden="true"><i />On Air</span>
             <div className="section-kicker" id="now-title">Läuft gerade</div>
             {state?.nowPlaying ? (
@@ -216,11 +306,16 @@ export function GuestApp({ code }: { code: string }) {
                 </div>
               </>
             ) : <EmptyState title="Noch spielt nichts">Starte Spotify auf dem Party-Gerät. Sobald Musik läuft, erscheint sie hier.</EmptyState>}
-            {state?.lockedNext && (
-              <aside className="now-playing__next" aria-labelledby="locked-title">
+            {renderedLockedNext && (
+              <aside
+                className={`now-playing__next now-playing__next--${nextTrackPhase}`}
+                aria-labelledby="locked-title"
+                aria-hidden={nextTrackPhase === "exiting" ? true : undefined}
+                onAnimationEnd={handleNextTrackAnimationEnd}
+              >
                 <span className="section-kicker" id="locked-title">Als Nächstes</span>
-                <a href={state.lockedNext.spotifyUrl} target="_blank" rel="noreferrer" aria-label={`${state.lockedNext.name} auf Spotify öffnen`}><Artwork track={state.lockedNext} size="small" /></a>
-                <TrackMeta track={state.lockedNext} compact />
+                <a href={renderedLockedNext.spotifyUrl} target="_blank" rel="noreferrer" tabIndex={nextTrackPhase === "exiting" ? -1 : undefined} aria-label={`${renderedLockedNext.name} auf Spotify öffnen`}><Artwork track={renderedLockedNext} size="small" /></a>
+                <TrackMeta track={renderedLockedNext} compact />
                 <span className="now-playing__next-state">
                   <svg viewBox="0 0 32 32" aria-hidden="true">
                     <path d="M5 8h12M5 16h9M5 24h7" />

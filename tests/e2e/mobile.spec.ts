@@ -55,6 +55,7 @@ test("Leerer Wiedergabestatus nutzt mobil die gesamte Karte", async ({ page, req
 test("Fest eingeplanter Track bleibt in derselben Player-Karte", async ({ page, request }) => {
   const response = await request.get("/api/admin/state", { headers: { "x-demo-admin": "true" } });
   const admin = await response.json();
+  let includeLockedNext = true;
   await page.route(`**/api/parties/${admin.party.party.code}/state`, async (route) => {
     const stateResponse = await route.fetch();
     const partyState = await stateResponse.json();
@@ -62,7 +63,7 @@ test("Fest eingeplanter Track bleibt in derselben Player-Karte", async ({ page, 
       response: stateResponse,
       json: {
         ...partyState,
-        lockedNext: {
+        lockedNext: includeLockedNext ? {
           id: "demo-2",
           uri: "spotify:track:demo-2",
           name: "Dance The Night",
@@ -72,10 +73,18 @@ test("Fest eingeplanter Track bleibt in derselben Player-Karte", async ({ page, 
           spotifyUrl: "https://open.spotify.com",
           durationMs: 176000,
           explicit: false,
-        },
+        } : null,
       },
     });
   });
+
+  const refreshPartyState = async () => {
+    const stateResponse = page.waitForResponse((candidate) =>
+      candidate.request().method() === "GET" && candidate.url().includes(`/api/parties/${admin.party.party.code}/state`),
+    );
+    await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })));
+    await stateResponse;
+  };
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/p/${admin.party.party.code}`);
@@ -101,7 +110,22 @@ test("Fest eingeplanter Track bleibt in derselben Player-Karte", async ({ page, 
   expect(desktop.animationName).toContain("next-track-enter-inline");
   expect(desktop.animationDuration).toBeGreaterThan(0.5);
 
+  await expect(next).toHaveClass(/now-playing__next--visible/);
+  includeLockedNext = false;
+  await refreshPartyState();
+  await expect(next).toHaveClass(/now-playing__next--exiting/);
+  const desktopExit = await next.evaluate((element) => ({
+    animationName: getComputedStyle(element).animationName,
+    animationDuration: Number.parseFloat(getComputedStyle(element).animationDuration),
+  }));
+  expect(desktopExit.animationName).toContain("next-track-exit-inline");
+  expect(desktopExit.animationDuration).toBeGreaterThanOrEqual(0.5);
+  await expect(next).toHaveCount(0, { timeout: 1_200 });
+
   await page.setViewportSize({ width: 390, height: 844 });
+  includeLockedNext = true;
+  await refreshPartyState();
+  await expect(next).toHaveClass(/now-playing__next--entering/);
   const mobile = await page.evaluate(() => {
     const current = document.querySelector(".now-playing__content");
     const next = document.querySelector(".now-playing__next");
@@ -120,6 +144,18 @@ test("Fest eingeplanter Track bleibt in derselben Player-Karte", async ({ page, 
   expect(mobile.animationName).toContain("next-track-enter-stacked");
   expect(mobile.animationDuration).toBeGreaterThan(0.5);
   expect(mobile.scrollWidth).toBeLessThanOrEqual(mobile.viewportWidth);
+
+  await expect(next).toHaveClass(/now-playing__next--visible/);
+  includeLockedNext = false;
+  await refreshPartyState();
+  await expect(next).toHaveClass(/now-playing__next--exiting/);
+  const mobileExit = await next.evaluate((element) => ({
+    animationName: getComputedStyle(element).animationName,
+    animationDuration: Number.parseFloat(getComputedStyle(element).animationDuration),
+  }));
+  expect(mobileExit.animationName).toContain("next-track-exit-stacked");
+  expect(mobileExit.animationDuration).toBeGreaterThanOrEqual(0.5);
+  await expect(next).toHaveCount(0, { timeout: 1_200 });
 });
 
 test("Gast kann mobil suchen, wünschen und voten", async ({ page, request }) => {
