@@ -321,7 +321,7 @@ button:disabled { opacity: .46; cursor: not-allowed; transform: none !important;
 .home-hero__copy > p { max-width: 620px; color: #d0cae1; font-size: clamp(1rem, 1.8vw, 1.25rem); line-height: 1.62; }
 .home-hint { display: inline-flex; min-height: 42px; align-items: center; margin-top: .7rem; padding: 0 1rem; border: 1px solid rgba(255, 255, 255, .2); border-radius: 999px; color: #dad4eb; font-family: var(--utility); font-size: .66rem; }
 .home-visual { position: relative; aspect-ratio: 1; display: grid; place-items: center; border: 1px solid rgba(255, 255, 255, .15); border-radius: 2rem; background: rgba(32, 29, 65, .55); box-shadow: var(--shadow); transform: rotate(2.5deg); }
-.home-visual > span:last-child { position: absolute; right: 1.2rem; bottom: 1rem; color: var(--muted); font-family: var(--utility); font-size: .62rem; text-transform: uppercase; letter-spacing: .13em; }
+.home-visual > span:last-child { position: absolute; z-index: 1; right: 5rem; bottom: 1.35rem; color: var(--ink); font-family: var(--utility); font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .13em; text-shadow: 0 1px 12px rgba(143, 124, 255, .55); }
 .home-vinyl { position: relative; width: 72%; aspect-ratio: 1; display: grid; place-items: center; border-radius: 50%; background: repeating-radial-gradient(circle, #27234b 0 8px, #373061 9px 10px), conic-gradient(from 10deg, #302a59, #17152f, #302a59); box-shadow: 0 28px 60px rgba(8, 6, 28, .45); animation: vinyl-turn 18s linear infinite; }
 .home-vinyl::before { content: ""; position: absolute; inset: 35%; border-radius: 50%; background: var(--accent); box-shadow: inset 0 0 0 12px rgba(255, 255, 255, .13); }
 .home-vinyl .brand__mark { position: relative; z-index: 1; width: 54px; height: 54px; }
