@@ -2,7 +2,7 @@
 
 Self-hosted, mobile-first party queue for Spotify Connect. Guests join through a QR code without an account, request songs, and vote on the order while playback remains under the host's Spotify account.
 
-[Deutsch](#deutsch) · [English](#english)
+[Deutsch](#deutsch) · [English](#english) · [MIT License](./LICENSE)
 
 ## Screenshots
 
@@ -189,6 +189,14 @@ CrowdQueue verwendet adaptives Polling und mehrere Caches, um das Spotify-Kontin
 
 CrowdQueue ist für private, nicht kommerzielle Feiern gedacht. Spotify Premium und die [Spotify Developer Policy](https://developer.spotify.com/policy) sind einzuhalten.
 
+### KI-Unterstützung, Haftung und Lizenz
+
+CrowdQueue wurde mit Unterstützung generativer KI entwickelt. Teile des Quellcodes, der Tests und der Dokumentation wurden mithilfe von KI erstellt oder überarbeitet. KI-generierte Beiträge können trotz Prüfung Fehler, Sicherheitslücken oder unvollständige Annahmen enthalten.
+
+Die Software wird in der vorliegenden Form („as is“) ohne ausdrückliche oder stillschweigende Gewährleistung bereitgestellt. Die Nutzung erfolgt auf eigenes Risiko. Soweit gesetzlich zulässig, übernehmen die Urheber und Rechteinhaber keine Haftung für Ansprüche, Schäden oder andere Folgen, die aus der Software oder ihrer Nutzung entstehen. Maßgeblich ist der vollständige Haftungs- und Gewährleistungsausschluss in der [`LICENSE`](./LICENSE).
+
+Der von diesem Projekt stammende Quellcode und die Projektdokumentation stehen, sofern nicht anders angegeben, unter der [MIT-Lizenz](./LICENSE). Sie erlaubt auch private und kommerzielle Nutzung, Änderung und Weitergabe unter Beibehaltung des Copyright- und Lizenzhinweises. Abhängigkeiten behalten ihre jeweiligen Lizenzen. Spotify, Spotify Connect, Spotify-Inhalte und -Marken sowie Drittinhalte wie Albumcover sind nicht Bestandteil der MIT-Lizenz dieses Projekts; für sie gelten die Bedingungen und Rechte der jeweiligen Anbieter und Rechteinhaber. Wer CrowdQueue mit der Spotify-Plattform betreibt, ist zusätzlich selbst für die Einhaltung der [Spotify Developer Terms](https://developer.spotify.com/terms), der Developer Policy und der dort geforderten Endnutzer- und Datenschutzhinweise verantwortlich.
+
 ---
 
 ## English
@@ -354,3 +362,11 @@ Spotify allows applications to read and append to its native playback queue, but
 CrowdQueue uses adaptive polling and several caches to conserve Spotify quota. Admin and controller requests take priority over queued guest searches. If Spotify responds with `429 Too Many Requests`, the restriction is persisted centrally in SQLite and no further Spotify requests are sent until it expires. Existing requests and votes remain available.
 
 CrowdQueue is intended for private, non-commercial parties. Spotify Premium and the [Spotify Developer Policy](https://developer.spotify.com/policy) must be respected.
+
+### AI assistance, disclaimer, and license
+
+CrowdQueue was developed with the assistance of generative AI. Portions of the source code, tests, and documentation were created or revised with AI assistance. Despite review, AI-generated contributions may contain errors, security issues, or incomplete assumptions.
+
+The software is provided “as is”, without express or implied warranty. Use it at your own risk. To the extent permitted by law, the authors and copyright holders accept no liability for claims, damages, or other consequences arising from the software or its use. The complete warranty and liability disclaimer in the [`LICENSE`](./LICENSE) governs.
+
+Unless stated otherwise, source code and project documentation originating from this project are available under the [MIT License](./LICENSE). It permits private and commercial use, modification, and distribution, provided that the copyright and license notice are retained. Dependencies remain subject to their respective licenses. Spotify, Spotify Connect, Spotify content and trademarks, and third-party content such as album artwork are not covered by this project's MIT License; the terms and rights of their respective providers and rights holders apply. Anyone operating CrowdQueue with the Spotify Platform is also responsible for complying with the [Spotify Developer Terms](https://developer.spotify.com/terms), the Developer Policy, and the end-user and privacy notices required by those terms.
