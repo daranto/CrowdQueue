@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
+import { translate } from "./locales";
 import { cardGrid, type QrExportOptions } from "./qrExportOptions";
 
 const PAGE_WIDTH = 210;
@@ -102,7 +103,7 @@ function drawPoster(doc: jsPDF, options: QrExportOptions, qrDataUrl: string): vo
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   setTextColor(doc, color ? VIOLET : BLACK);
-  doc.text("DEINE PARTY. DEINE MUSIK.", 16, 42);
+  doc.text(pdfText(translate(options.language, "DEINE PARTY. DEINE MUSIK.")), 16, 42);
 
   setTextColor(doc, BLACK);
   doc.setFont("helvetica", "bold");
@@ -125,11 +126,11 @@ function drawPoster(doc: jsPDF, options: QrExportOptions, qrDataUrl: string): vo
   doc.text("SCAN & PLAY", PAGE_WIDTH / 2, qrY + qrSize + 18, { align: "center" });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(11);
-  doc.text("Song wünschen. Mitvoten.", PAGE_WIDTH / 2, qrY + qrSize + 27, { align: "center" });
+  doc.text(pdfText(translate(options.language, "Song wünschen. Mitvoten.")), PAGE_WIDTH / 2, qrY + qrSize + 27, { align: "center" });
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8);
   setTextColor(doc, MUTED);
-  doc.text("KEINE APP. KEIN LOGIN.", PAGE_WIDTH / 2, qrY + qrSize + 36, { align: "center" });
+  doc.text(pdfText(translate(options.language, "KEINE APP. KEIN LOGIN.")), PAGE_WIDTH / 2, qrY + qrSize + 36, { align: "center" });
 
   setTextColor(doc, color ? MUTED : BLACK);
   doc.setFont("helvetica", "normal");
@@ -137,7 +138,7 @@ function drawPoster(doc: jsPDF, options: QrExportOptions, qrDataUrl: string): vo
   doc.text(ellipsize(doc, options.guestUrl, 172), PAGE_WIDTH / 2, 274, { align: "center" });
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7.5);
-  doc.text("Musik läuft über Spotify Connect", PAGE_WIDTH / 2, 282, { align: "center" });
+  doc.text(pdfText(translate(options.language, "Musik läuft über Spotify Connect")), PAGE_WIDTH / 2, 282, { align: "center" });
 }
 
 function drawCard(doc: jsPDF, options: QrExportOptions, qrDataUrl: string, x: number, y: number, width: number, height: number): void {
@@ -186,7 +187,7 @@ function drawCard(doc: jsPDF, options: QrExportOptions, qrDataUrl: string, x: nu
   doc.setFont("helvetica", "normal");
   doc.setFontSize(micro ? 4.2 : compact ? 5.3 : 7);
   doc.setTextColor(...MUTED);
-  doc.text("WÜNSCHEN + VOTEN", x + width / 2, ctaY + (micro ? 3.5 : compact ? 4.2 : 5.5), { align: "center" });
+  doc.text(pdfText(translate(options.language, "WÜNSCHEN + VOTEN")), x + width / 2, ctaY + (micro ? 3.5 : compact ? 4.2 : 5.5), { align: "center" });
 }
 
 function drawCutLines(doc: jsPDF, columns: number, rows: number, margin: number, cellWidth: number, cellHeight: number): void {
@@ -226,7 +227,7 @@ export async function createQrPdf(options: QrExportOptions): Promise<Blob> {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true, putOnlyUsedFonts: true });
   doc.setProperties({
     title: `CrowdQueue - ${pdfText(options.partyName)}`,
-    subject: "QR-Code für den CrowdQueue Gastzugang",
+    subject: translate(options.language, "QR-Code für den CrowdQueue Gastzugang"),
     author: "CrowdQueue",
     creator: "CrowdQueue",
   });

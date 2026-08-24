@@ -61,6 +61,12 @@ h3 { letter-spacing: -.025em; }
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 .topbar { min-height: 78px; width: min(100% - 2rem, 1240px); margin: 0 auto; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255, 255, 255, .14); }
+.topbar__actions { display: flex; align-items: center; gap: .65rem; }
+.language-switcher { position: relative; display: inline-flex; align-items: center; }
+.language-switcher::before { content: "文"; position: absolute; left: .72rem; color: var(--accent); font-family: var(--utility); font-size: .7rem; font-weight: 900; pointer-events: none; }
+.language-switcher__value { display: none; }
+.language-switcher select { min-height: 44px; max-width: 8.5rem; appearance: none; border: 1px solid rgba(143, 124, 255, .38); border-radius: 999px; background: rgba(35, 32, 68, .72); color: var(--ink); padding: 0 1.8rem 0 1.9rem; font-family: var(--utility); font-size: .68rem; font-weight: 800; cursor: pointer; }
+.language-switcher::after { content: "⌄"; position: absolute; right: .65rem; top: 50%; transform: translateY(-56%); color: var(--muted); font-size: .8rem; pointer-events: none; }
 .topbar__queue-button { min-height: 48px; display: inline-flex; align-items: center; gap: .65rem; padding: .35rem .4rem .35rem .8rem; border: 1px solid rgba(143, 124, 255, .42); border-radius: 999px; background: rgba(35, 32, 68, .72); color: var(--ink); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06); transition: transform .2s ease, border-color .2s ease, background .2s ease, box-shadow .2s ease; }
 .topbar__queue-button:hover, .topbar__queue-button[aria-expanded="true"] { transform: translateY(-1px); border-color: rgba(255, 152, 119, .72); background: rgba(49, 43, 95, .92); box-shadow: 0 10px 28px rgba(8, 6, 28, .24), inset 0 1px 0 rgba(255, 255, 255, .08); }
 .topbar__queue-button svg { width: 21px; height: 21px; fill: none; stroke: #ff9877; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -580,6 +586,12 @@ button:disabled { opacity: .46; cursor: not-allowed; transform: none !important;
 
 @media (max-width: 650px) {
   .topbar { min-height: 70px; }
+  .topbar__actions { gap: .35rem; }
+  .language-switcher select { width: 58px; padding: 0; color: transparent; }
+  .language-switcher select option { color: #17152f; background: white; }
+  .language-switcher::before { left: .65rem; }
+  .language-switcher__value { position: absolute; left: 1.75rem; display: inline; color: var(--ink); font-family: var(--utility); font-size: .62rem; font-weight: 900; pointer-events: none; }
+  .language-switcher::after { display: none; }
   .topbar__queue-button { gap: .5rem; padding-left: .65rem; }
   .topbar__queue-label small { display: none; }
   .topbar__queue-count { min-width: 30px; height: 30px; }

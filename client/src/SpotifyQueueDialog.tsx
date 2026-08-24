@@ -1,5 +1,6 @@
 import { useEffect, useRef, type PointerEvent } from "react";
 import { Artwork, TrackMeta } from "./components";
+import { useI18n } from "./i18n";
 import type { Track } from "./types";
 
 interface SpotifyQueueDialogProps {
@@ -9,6 +10,7 @@ interface SpotifyQueueDialogProps {
 }
 
 export function SpotifyQueueDialog({ open, tracks, onClose }: SpotifyQueueDialogProps) {
+  const { t } = useI18n();
   const dialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -36,15 +38,15 @@ export function SpotifyQueueDialog({ open, tracks, onClose }: SpotifyQueueDialog
     >
       <div className="spotify-queue-dialog__heading">
         <div>
-          <span className="section-kicker">Schreibgeschützt</span>
-          <h2 id="spotify-queue-title">Spotify Warteschlange</h2>
+          <span className="section-kicker">{t("Schreibgeschützt")}</span>
+          <h2 id="spotify-queue-title">{t("Spotify Warteschlange")}</h2>
         </div>
-        <button className="dialog-close" type="button" onClick={onClose} aria-label="Spotify Warteschlange schließen">×</button>
+        <button className="dialog-close" type="button" onClick={onClose} aria-label={t("Spotify Warteschlange schließen")}>×</button>
       </div>
-      <p className="spotify-queue-dialog__intro">Direkt in Spotify vorgemerkte Titel. Hier kannst du sie nur ansehen.</p>
+      <p className="spotify-queue-dialog__intro">{t("Direkt in Spotify vorgemerkte Titel. Hier kannst du sie nur ansehen.")}</p>
       <div className="spotify-queue-dialog__meta">
-        <span>{tracks.length} Titel</span>
-        <span>Nur Anzeige</span>
+        <span>{t("{count} Titel", { count: tracks.length })}</span>
+        <span>{t("Nur Anzeige")}</span>
       </div>
       {tracks.length > 0 ? (
         <ol className="spotify-queue-dialog__list">
@@ -59,8 +61,8 @@ export function SpotifyQueueDialog({ open, tracks, onClose }: SpotifyQueueDialog
       ) : (
         <div className="spotify-queue-dialog__empty">
           <span aria-hidden="true">♫</span>
-          <strong>Noch keine weiteren Titel</strong>
-          <p>Neue Spotify-Titel erscheinen automatisch hier.</p>
+          <strong>{t("Noch keine weiteren Titel")}</strong>
+          <p>{t("Neue Spotify-Titel erscheinen automatisch hier.")}</p>
         </div>
       )}
     </dialog>

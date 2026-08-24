@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, api, formatTime } from "./api";
-import { Artwork, Brand, EmptyState, Loading, Notice, QueueRow, SpotifyLimitNotice, TrackMeta } from "./components";
+import { Artwork, Brand, EmptyState, LanguageSwitcher, Loading, Notice, QueueRow, SpotifyLimitNotice, TrackMeta } from "./components";
+import { useI18n } from "./i18n";
 import { QrExportDialog } from "./QrExportDialog";
 import { StatisticsPanel } from "./StatisticsPanel";
 import type { AdminState, ApiStatistics, StatisticsRange } from "./types";
 import { useTrackTransition } from "./useTrackTransition";
 
 export function AdminApp() {
+  const { serverMessage, t } = useI18n();
   const [state, setState] = useState<AdminState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -29,9 +31,9 @@ export function AdminApp() {
   const authenticated = state?.authenticated ?? false;
   const oauthError = new URLSearchParams(window.location.search).get("error");
   const oauthErrorMessage = oauthError === "falsches_konto"
-    ? "Dieses Spotify-Konto ist nicht als Besitzer hinterlegt. Bitte melde dich mit dem ursprünglichen Admin-Konto an."
+    ? t("Dieses Spotify-Konto ist nicht als Besitzer hinterlegt. Bitte melde dich mit dem ursprünglichen Admin-Konto an.")
     : oauthError === "spotify_abgebrochen"
-      ? "Die Spotify-Anmeldung wurde abgebrochen."
+      ? t("Die Spotify-Anmeldung wurde abgebrochen.")
       : null;
 
   const load = useCallback(async () => {
@@ -42,11 +44,11 @@ export function AdminApp() {
         : next);
       setError(null);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Adminbereich konnte nicht geladen werden.");
+      setError(caught instanceof Error ? caught.message : t("Adminbereich konnte nicht geladen werden."));
     } finally {
       setLoading(false);
     }
-  }, [demoMode]);
+  }, [demoMode, t]);
 
   const loadStatistics = useCallback(async () => {
     if (!authenticated) return;
@@ -56,11 +58,11 @@ export function AdminApp() {
       setStatistics(await api<ApiStatistics>(`/api/admin/statistics?range=${statisticsRange}`, { headers }));
       setStatisticsError(null);
     } catch (caught) {
-      setStatisticsError(caught instanceof Error ? caught.message : "Statistik konnte nicht geladen werden.");
+      setStatisticsError(caught instanceof Error ? caught.message : t("Statistik konnte nicht geladen werden."));
     } finally {
       setStatisticsLoading(false);
     }
-  }, [authenticated, demoMode, statisticsRange]);
+  }, [authenticated, demoMode, statisticsRange, t]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
@@ -111,7 +113,7 @@ export function AdminApp() {
       await load();
     } catch (caught) {
       if (caught instanceof ApiError && (caught.status === 429 || caught.reason === "invalid_grant")) await load();
-      setError(caught instanceof Error ? caught.message : "Aktion fehlgeschlagen.");
+      setError(caught instanceof Error ? caught.message : t("Aktion fehlgeschlagen."));
     } finally {
       setBusy(null);
     }
@@ -119,7 +121,7 @@ export function AdminApp() {
 
   async function createParty(event: React.FormEvent) {
     event.preventDefault();
-    await action("create", "/api/admin/parties", "POST", { name, origin }, "Party wurde erstellt.");
+    await action("create", "/api/admin/parties", "POST", { name, origin }, t("Party wurde erstellt."));
     setName("");
   }
 
@@ -130,10 +132,10 @@ export function AdminApp() {
     try {
       const result = await api<{ devices: NonNullable<AdminState["devices"]> }>("/api/admin/devices/refresh", adminInit("POST"));
       setState((current) => current ? { ...current, devices: result.devices } : current);
-      setMessage(result.devices.length ? "Geräteliste aktualisiert." : "Spotify hat aktuell keine Geräte gemeldet.");
+      setMessage(t(result.devices.length ? "Geräteliste aktualisiert." : "Spotify hat aktuell keine Geräte gemeldet."));
     } catch (caught) {
       if (caught instanceof ApiError && (caught.status === 429 || caught.reason === "invalid_grant")) await load();
-      setError(caught instanceof Error ? caught.message : "Geräteliste konnte nicht aktualisiert werden.");
+      setError(caught instanceof Error ? caught.message : t("Geräteliste konnte nicht aktualisiert werden."));
     } finally {
       setBusy(null);
     }
@@ -149,7 +151,7 @@ export function AdminApp() {
       });
       window.location.assign(result.url);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Spotify-Anmeldung konnte nicht gestartet werden.");
+      setError(caught instanceof Error ? caught.message : t("Spotify-Anmeldung konnte nicht gestartet werden."));
       setBusy(null);
     }
   }
@@ -189,33 +191,33 @@ export function AdminApp() {
       await api(nextIsPlaying ? "/api/admin/player/resume" : "/api/admin/player/pause", adminInit("POST"));
     } catch (caught) {
       await load();
-      setError(caught instanceof Error ? caught.message : "Wiedergabe konnte nicht gesteuert werden.");
+      setError(caught instanceof Error ? caught.message : t("Wiedergabe konnte nicht gesteuert werden."));
     } finally {
       setBusy(null);
     }
   }
 
-  if (loading) return <main id="main" className="shell"><Loading label="Adminbereich wird geladen …" /></main>;
+  if (loading) return <main id="main" className="shell"><Loading label={t("Adminbereich wird geladen …")} /></main>;
 
   if (!state?.authenticated) {
     const setupRequired = state?.setupRequired ?? true;
     return (
       <div className="admin-page">
-        <header className="topbar"><Brand /></header>
+        <header className="topbar"><Brand /><LanguageSwitcher /></header>
         <main id="main" className="auth-card">
-          <span className="section-kicker">Party-Zentrale</span>
-          <h1>{setupRequired ? "Admin verbinden" : "Admin anmelden"}</h1>
+          <span className="section-kicker">{t("Party-Zentrale")}</span>
+          <h1>{t(setupRequired ? "Admin verbinden" : "Admin anmelden")}</h1>
           <p>{setupRequired
-            ? "Verbinde einmalig das Spotify-Premium-Konto, das die Musik auf deinem Connect-Gerät abspielt."
-            : "Melde dich mit dem bereits hinterlegten Spotify-Admin-Konto an."}</p>
-          {!state?.configured && <Notice tone="error">In der Serverkonfiguration fehlen Spotify Client ID oder Client Secret.</Notice>}
+            ? t("Verbinde einmalig das Spotify-Premium-Konto, das die Musik auf deinem Connect-Gerät abspielt.")
+            : t("Melde dich mit dem bereits hinterlegten Spotify-Admin-Konto an.")}</p>
+          {!state?.configured && <Notice tone="error">{t("In der Serverkonfiguration fehlen Spotify Client ID oder Client Secret.")}</Notice>}
           {(error || oauthErrorMessage) && <Notice tone="error">{error ?? oauthErrorMessage}</Notice>}
           <SpotifyLimitNotice limit={state?.spotifyRateLimit} />
-          {setupRequired && <label><span>Einmaliges Setup-Token</span><input type="password" value={setupToken} onChange={(event) => setSetupToken(event.target.value)} autoComplete="one-time-code" /></label>}
-          <button className="primary-button" type="button" onClick={() => void login()} disabled={!state?.configured || rateLimited || busy === "login" || Boolean(setupRequired && !setupToken)}>{busy === "login" ? "Anmeldung wird gestartet …" : setupRequired ? "Mit Spotify verbinden" : "Mit Spotify anmelden"}</button>
+          {setupRequired && <label><span>{t("Einmaliges Setup-Token")}</span><input type="password" value={setupToken} onChange={(event) => setSetupToken(event.target.value)} autoComplete="one-time-code" /></label>}
+          <button className="primary-button" type="button" onClick={() => void login()} disabled={!state?.configured || rateLimited || busy === "login" || Boolean(setupRequired && !setupToken)}>{t(busy === "login" ? "Anmeldung wird gestartet …" : setupRequired ? "Mit Spotify verbinden" : "Mit Spotify anmelden")}</button>
           <p className="fine-print">{setupRequired
-            ? "Das Setup-Token wird nur beim allerersten Verbinden benötigt. Danach bleibt ausschließlich dieses Spotify-Konto als Besitzer hinterlegt."
-            : "Nur das ursprünglich eingerichtete Spotify-Konto erhält Zugriff auf die Admin-Konsole."}</p>
+            ? t("Das Setup-Token wird nur beim allerersten Verbinden benötigt. Danach bleibt ausschließlich dieses Spotify-Konto als Besitzer hinterlegt.")
+            : t("Nur das ursprünglich eingerichtete Spotify-Konto erhält Zugriff auf die Admin-Konsole.")}</p>
         </main>
       </div>
     );
@@ -223,14 +225,14 @@ export function AdminApp() {
 
   return (
     <div className="admin-page">
-      <header className="topbar"><Brand /><div className="admin-user"><span>{state.spotify?.displayName ?? "Admin"}</span><button type="button" className="text-link" onClick={() => void action("logout", "/api/admin/logout", "POST")}>Abmelden</button></div></header>
+      <header className="topbar"><Brand /><div className="admin-user"><LanguageSwitcher /><span>{state.spotify?.displayName ?? "Admin"}</span><button type="button" className="text-link" onClick={() => void action("logout", "/api/admin/logout", "POST")}>{t("Abmelden")}</button></div></header>
       <main id="main" className="admin-shell">
-        <div className="admin-heading"><div><span className="section-kicker">Party-Zentrale</span><h1>Admin</h1></div><span className={`admin-status${spotifyConnected ? "" : " admin-status--off"}`}><i /> {spotifyConnected ? "Spotify verbunden" : "Spotify getrennt"}</span></div>
+        <div className="admin-heading"><div><span className="section-kicker">{t("Party-Zentrale")}</span><h1>Admin</h1></div><span className={`admin-status${spotifyConnected ? "" : " admin-status--off"}`}><i /> {t(spotifyConnected ? "Spotify verbunden" : "Spotify getrennt")}</span></div>
         {error && <Notice tone="error" live>{error}</Notice>}
         {message && <Notice tone="success" live>{message}</Notice>}
         <SpotifyLimitNotice limit={state.spotifyRateLimit} />
-        {!spotifyConnected && <Notice tone="error"><strong>Die Spotify-Verbindung ist abgelaufen.</strong> Verbinde das hinterlegte Besitzerkonto erneut. Das einmalige Setup-Token wird dafür nicht benötigt. <button className="inline-button" type="button" onClick={() => void login()} disabled={!state.configured || rateLimited || busy === "login"}>{busy === "login" ? "Verbindung wird gestartet …" : "Spotify erneut verbinden"}</button></Notice>}
-        {state.spotify?.expiringSoon && <Notice>Die Spotify-Verbindung läuft bald ab. Bitte verbinde das Konto vorsorglich neu.</Notice>}
+        {!spotifyConnected && <Notice tone="error"><strong>{t("Die Spotify-Verbindung ist abgelaufen.")}</strong> {t("Verbinde das hinterlegte Besitzerkonto erneut. Das einmalige Setup-Token wird dafür nicht benötigt.")} <button className="inline-button" type="button" onClick={() => void login()} disabled={!state.configured || rateLimited || busy === "login"}>{t(busy === "login" ? "Verbindung wird gestartet …" : "Spotify erneut verbinden")}</button></Notice>}
+        {state.spotify?.expiringSoon && <Notice>{t("Die Spotify-Verbindung läuft bald ab. Bitte verbinde das Konto vorsorglich neu.")}</Notice>}
 
         <StatisticsPanel
           statistics={statistics}
@@ -243,35 +245,35 @@ export function AdminApp() {
 
         {!state.party ? (
           <section className="admin-card create-party">
-            <span className="section-kicker">Neuer Abend</span><h2>Party starten</h2>
+            <span className="section-kicker">{t("Neuer Abend")}</span><h2>{t("Party starten")}</h2>
             <form onSubmit={createParty}>
-              <label><span>Partyname</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="z. B. Sommerfest" minLength={2} maxLength={80} required /></label>
-              <fieldset><legend>Gast-Link</legend><label><input type="radio" name="origin" checked={origin === "public"} onChange={() => setOrigin("public")} /> Öffentlich · {state.publicBaseUrl}</label><label><input type="radio" name="origin" checked={origin === "lan"} onChange={() => setOrigin("lan")} /> Nur WLAN · {state.lanBaseUrl}</label></fieldset>
-              {state.publicBaseUrl?.includes("127.0.0.1") && <Notice>Für Gäste auf dem iPhone bitte „Nur WLAN“ wählen. Die Adresse 127.0.0.1 funktioniert ausschließlich auf diesem Mac.</Notice>}
-              <button className="primary-button" type="submit" disabled={busy === "create"}>{busy === "create" ? "Wird gestartet …" : "Party starten"}</button>
+              <label><span>{t("Partyname")}</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder={t("z. B. Sommerfest")} minLength={2} maxLength={80} required /></label>
+              <fieldset><legend>{t("Gast-Link")}</legend><label><input type="radio" name="origin" checked={origin === "public"} onChange={() => setOrigin("public")} /> {t("Öffentlich")} · {state.publicBaseUrl}</label><label><input type="radio" name="origin" checked={origin === "lan"} onChange={() => setOrigin("lan")} /> {t("Nur WLAN")} · {state.lanBaseUrl}</label></fieldset>
+              {state.publicBaseUrl?.includes("127.0.0.1") && <Notice>{t("Für Gäste auf dem iPhone bitte „Nur WLAN“ wählen. Die Adresse 127.0.0.1 funktioniert ausschließlich auf diesem Mac.")}</Notice>}
+              <button className="primary-button" type="submit" disabled={busy === "create"}>{t(busy === "create" ? "Wird gestartet …" : "Party starten")}</button>
             </form>
           </section>
         ) : (
           <>
             <section className="admin-grid">
               <div className="admin-card party-code">
-                <span className="section-kicker">Aktive Party</span><h2>{state.party.party.name}</h2>
-                {state.qrDataUrl && <img src={state.qrDataUrl} alt={`QR-Code zum Gast-Link ${state.party.party.guestUrl}`} />}
+                <span className="section-kicker">{t("Aktive Party")}</span><h2>{state.party.party.name}</h2>
+                {state.qrDataUrl && <img src={state.qrDataUrl} alt={t("QR-Code zum Gast-Link {url}", { url: state.party.party.guestUrl })} />}
                 <a href={state.party.party.guestUrl} target="_blank" rel="noreferrer">{state.party.party.guestUrl}</a>
-                <button className="secondary-button" type="button" onClick={() => void navigator.clipboard.writeText(state.party!.party.guestUrl).then(() => setMessage("Gast-Link kopiert."))}>Link kopieren</button>
-                {state.qrDataUrl && <button className="secondary-button qr-export-trigger" type="button" onClick={() => setQrExportOpen(true)}>QR-Code drucken & exportieren</button>}
+                <button className="secondary-button" type="button" onClick={() => void navigator.clipboard.writeText(state.party!.party.guestUrl).then(() => setMessage(t("Gast-Link kopiert.")))}>{t("Link kopieren")}</button>
+                {state.qrDataUrl && <button className="secondary-button qr-export-trigger" type="button" onClick={() => setQrExportOpen(true)}>{t("QR-Code drucken & exportieren")}</button>}
                 <a className="display-wall-link" href={`${state.party.party.guestUrl}/display`} target="_blank" rel="noreferrer">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8M12 17v4" /><path d="m10 8 5 2.5-5 2.5V8Z" /></svg>
-                  <span><strong>Display Wall öffnen</strong><small>Für Fernseher oder Monitor</small></span>
+                  <span><strong>{t("Display Wall öffnen")}</strong><small>{t("Für Fernseher oder Monitor")}</small></span>
                   <i aria-hidden="true">↗</i>
                 </a>
               </div>
               <div className="admin-card controls">
-                <span className="section-kicker">Spotify Connect</span><h2>Wiedergabe</h2>
+                <span className="section-kicker">Spotify Connect</span><h2>{t("Wiedergabe")}</h2>
                 <div className="admin-player" role="region" aria-label="Spotify Player">
                   <div className="admin-player__status">
-                    <span>Jetzt läuft</span>
-                    <span className={state.party.player.isPlaying ? "admin-player__live" : "admin-player__live admin-player__live--paused"}><i />{state.party.player.isPlaying ? "Spielt" : "Pausiert"}</span>
+                    <span>{t("Jetzt läuft")}</span>
+                    <span className={state.party.player.isPlaying ? "admin-player__live" : "admin-player__live admin-player__live--paused"}><i />{t(state.party.player.isPlaying ? "Spielt" : "Pausiert")}</span>
                   </div>
                   {renderedCurrentTrack ? (
                     <div
@@ -282,20 +284,20 @@ export function AdminApp() {
                       <Artwork track={renderedCurrentTrack} size="hero" />
                       <div className="admin-player__details">
                         <TrackMeta track={renderedCurrentTrack} />
-                        <div className="progress" role="progressbar" aria-label="Fortschritt des laufenden Songs" aria-valuemin={0} aria-valuemax={renderedCurrentTrack.durationMs} aria-valuenow={renderedPlayerProgressMs}><span style={{ width: `${renderedPlayerProgress}%` }} /></div>
+                        <div className="progress" role="progressbar" aria-label={t("Fortschritt des laufenden Songs")} aria-valuemin={0} aria-valuemax={renderedCurrentTrack.durationMs} aria-valuenow={renderedPlayerProgressMs}><span style={{ width: `${renderedPlayerProgress}%` }} /></div>
                         <div className="progress-label"><span>{formatTime(renderedPlayerProgressMs)}</span><span>−{formatTime(renderedCurrentTrack.durationMs - renderedPlayerProgressMs)}</span></div>
-                        <div className="admin-player__device"><span aria-hidden="true">●</span>{state.party.player.deviceName ?? "Kein aktives Gerät"}</div>
+                        <div className="admin-player__device"><span aria-hidden="true">●</span>{state.party.player.deviceName ?? t("Kein aktives Gerät")}</div>
                       </div>
                     </div>
                   ) : (
-                    <div className="admin-player__empty"><span aria-hidden="true">♫</span><div><strong>Noch keine Wiedergabe</strong><small>Starte einen Titel auf dem Spotify-Gerät.</small></div></div>
+                    <div className="admin-player__empty"><span aria-hidden="true">♫</span><div><strong>{t("Noch keine Wiedergabe")}</strong><small>{t("Starte einen Titel auf dem Spotify-Gerät.")}</small></div></div>
                   )}
-                  <div className="admin-player__transport" aria-label="Wiedergabesteuerung">
+                  <div className="admin-player__transport" aria-label={t("Wiedergabesteuerung")}>
                     <button
                       className="admin-player__play"
                       type="button"
-                      aria-label={state.party.player.isPlaying ? "Wiedergabe pausieren" : "Wiedergabe fortsetzen"}
-                      title={state.party.player.isPlaying ? "Pause" : "Wiedergabe fortsetzen"}
+                      aria-label={t(state.party.player.isPlaying ? "Wiedergabe pausieren" : "Wiedergabe fortsetzen")}
+                      title={t(state.party.player.isPlaying ? "Pause" : "Wiedergabe fortsetzen")}
                       disabled={spotifyUnavailable || busy === "player-toggle"}
                       onClick={() => void togglePlayback()}
                     >
@@ -308,8 +310,8 @@ export function AdminApp() {
                     <button
                       className="admin-player__skip"
                       type="button"
-                      aria-label="Nächsten Titel abspielen"
-                      title="Nächster Titel"
+                      aria-label={t("Nächsten Titel abspielen")}
+                      title={t("Nächster Titel")}
                       disabled={spotifyUnavailable || busy === "next"}
                       onClick={() => void action("next", "/api/admin/player/next")}
                     >
@@ -318,20 +320,20 @@ export function AdminApp() {
                   </div>
                 </div>
                 <div className="admin-device-row">
-                  <label><span>Zielgerät</span><select value={state.selectedDeviceId ?? ""} disabled={spotifyUnavailable} onChange={(event) => void action("device", "/api/admin/parties/active/device", "PUT", { deviceId: event.target.value }, "Zielgerät geändert.")}><option value="">Aktives Spotify-Gerät</option>{state.devices?.map((device) => <option key={device.id} value={device.id} disabled={device.isRestricted}>{device.name} · {device.type}{device.isRestricted ? " (gesperrt)" : ""}</option>)}</select></label>
-                  <button className="device-refresh" type="button" aria-label="Geräteliste aktualisieren" title="Geräteliste aktualisieren" disabled={spotifyUnavailable || busy === "refresh-devices"} onClick={() => void refreshDevices()}>
+                  <label><span>{t("Zielgerät")}</span><select value={state.selectedDeviceId ?? ""} disabled={spotifyUnavailable} onChange={(event) => void action("device", "/api/admin/parties/active/device", "PUT", { deviceId: event.target.value }, t("Zielgerät geändert."))}><option value="">{t("Aktives Spotify-Gerät")}</option>{state.devices?.map((device) => <option key={device.id} value={device.id} disabled={device.isRestricted}>{device.name} · {device.type}{device.isRestricted ? ` (${t("gesperrt")})` : ""}</option>)}</select></label>
+                  <button className="device-refresh" type="button" aria-label={t("Geräteliste aktualisieren")} title={t("Geräteliste aktualisieren")} disabled={spotifyUnavailable || busy === "refresh-devices"} onClick={() => void refreshDevices()}>
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5" /><path d="M4 17v-5h5" /><path d="M6.1 8.5A7 7 0 0 1 18.4 7L20 12M4 12l1.6 5A7 7 0 0 0 17.9 15.5" /></svg>
                   </button>
                 </div>
-                {state.party.player.warning && !spotifyUnavailable && <Notice>{state.party.player.warning}</Notice>}
-                <button className="danger-button" type="button" onClick={() => window.confirm("Party wirklich beenden? Die Queue wird geschlossen.") && void action("end", "/api/admin/parties/active", "DELETE", undefined, "Party beendet.")} disabled={busy === "end"}>Party beenden</button>
+                {state.party.player.warning && !spotifyUnavailable && <Notice>{serverMessage(state.party.player.warning)}</Notice>}
+                <button className="danger-button" type="button" onClick={() => window.confirm(t("Party wirklich beenden? Die Queue wird geschlossen.")) && void action("end", "/api/admin/parties/active", "DELETE", undefined, t("Party beendet."))} disabled={busy === "end"}>{t("Party beenden")}</button>
               </div>
             </section>
 
             <section className="admin-card admin-queue">
-              <div className="section-title-row"><div><span className="section-kicker">Moderation</span><h2>Offene Party Queue</h2></div><span>{state.party.queue.length} {state.party.queue.length === 1 ? "Song" : "Songs"}</span></div>
-              {state.party.lockedNext && <Notice><strong>Fest eingeplant:</strong> {state.party.lockedNext.name}. Dieser Song wurde bereits an Spotify übergeben und kann nicht entfernt werden.</Notice>}
-              {state.party.queue.length ? <ol className="queue-list">{state.party.queue.map((item, index) => <QueueRow key={item.queueId} item={item} position={index + 1} onRemove={() => void action(item.queueId, `/api/admin/queue/${item.queueId}`, "DELETE", undefined, `${item.name} wurde entfernt.`)} busy={busy === item.queueId} />)}</ol> : <EmptyState title="Keine offenen Wünsche">Neue Wünsche der Gäste erscheinen automatisch hier.</EmptyState>}
+              <div className="section-title-row"><div><span className="section-kicker">{t("Moderation")}</span><h2>{t("Offene Party Queue")}</h2></div><span>{state.party.queue.length} {t(state.party.queue.length === 1 ? "Song" : "Songs")}</span></div>
+              {state.party.lockedNext && <Notice><strong>{t("Fest eingeplant:")}</strong> {state.party.lockedNext.name}. {t("Dieser Song wurde bereits an Spotify übergeben und kann nicht entfernt werden.")}</Notice>}
+              {state.party.queue.length ? <ol className="queue-list">{state.party.queue.map((item, index) => <QueueRow key={item.queueId} item={item} position={index + 1} onRemove={() => void action(item.queueId, `/api/admin/queue/${item.queueId}`, "DELETE", undefined, t("{track} wurde entfernt.", { track: item.name }))} busy={busy === item.queueId} />)}</ol> : <EmptyState title={t("Keine offenen Wünsche")}>{t("Neue Wünsche der Gäste erscheinen automatisch hier.")}</EmptyState>}
             </section>
           </>
         )}

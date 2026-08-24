@@ -1,3 +1,5 @@
+import { detectLanguage, translateServerMessage } from "./locales";
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -12,17 +14,19 @@ export class ApiError extends Error {
 }
 
 export async function api<T>(url: string, init?: RequestInit): Promise<T> {
+  const language = detectLanguage();
   const response = await fetch(url, {
     ...init,
     headers: {
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      "Accept-Language": language,
       ...init?.headers,
     },
   });
   const payload = response.headers.get("content-type")?.includes("application/json") ? await response.json() : null;
   if (!response.ok) {
     throw new ApiError(
-      payload?.error ?? `Anfrage fehlgeschlagen (${response.status}).`,
+      translateServerMessage(language, payload?.error ?? `Anfrage fehlgeschlagen (${response.status}).`),
       response.status,
       typeof payload?.retryAfter === "number" ? payload.retryAfter : null,
       typeof payload?.reason === "string" ? payload.reason : null,

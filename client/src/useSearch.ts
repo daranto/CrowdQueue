@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { ApiError, api } from "./api";
+import { useI18n } from "./i18n";
 import type { Track } from "./types";
 
 export function useSearch(endpoint: string, query: string) {
+  const { t } = useI18n();
   const [items, setItems] = useState<Track[]>([]);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -29,7 +31,7 @@ export function useSearch(endpoint: string, query: string) {
         setNextOffset(result.nextOffset);
       } catch (caught) {
         if (!controller.signal.aborted) {
-          setError(caught instanceof Error ? caught.message : "Suche fehlgeschlagen.");
+          setError(caught instanceof Error ? caught.message : t("Suche fehlgeschlagen."));
           setErrorStatus(caught instanceof ApiError ? caught.status : null);
         }
       } finally {
@@ -40,7 +42,7 @@ export function useSearch(endpoint: string, query: string) {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [endpoint, query]);
+  }, [endpoint, query, t]);
 
   async function more() {
     if (nextOffset === null || loading) return;
@@ -50,7 +52,7 @@ export function useSearch(endpoint: string, query: string) {
       setItems((current) => [...current, ...result.items.filter((item) => !current.some((old) => old.id === item.id))]);
       setNextOffset(result.nextOffset);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Weitere Ergebnisse konnten nicht geladen werden.");
+      setError(caught instanceof Error ? caught.message : t("Weitere Ergebnisse konnten nicht geladen werden."));
       setErrorStatus(caught instanceof ApiError ? caught.status : null);
     } finally {
       setLoading(false);

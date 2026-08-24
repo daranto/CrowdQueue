@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 
-test.beforeEach(async ({ request }) => {
+test.beforeEach(async ({ page, request }) => {
+  await page.addInitScript(() => {
+    if (!window.localStorage.getItem("crowdqueue-language")) window.localStorage.setItem("crowdqueue-language", "de");
+  });
   const state = await request.get("/api/admin/state", { headers: { "x-demo-admin": "true" } });
   const admin = await state.json();
   if (admin.party) {
@@ -11,6 +14,15 @@ test.beforeEach(async ({ request }) => {
     data: { name: "Mobile Testparty", origin: "public" },
   });
   expect(created.ok()).toBeTruthy();
+});
+
+test("Sprache kann auf Englisch umgestellt und gespeichert werden", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("combobox", { name: "Sprache" }).selectOption("en");
+  await expect(page.getByRole("heading", { name: /Scan the party QR code/ })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await page.reload();
+  await expect(page.getByRole("combobox", { name: "Language" })).toHaveValue("en");
 });
 
 test("Direkter Aufruf begrüßt Gäste nur mit dem QR-Code-Hinweis", async ({ page }) => {

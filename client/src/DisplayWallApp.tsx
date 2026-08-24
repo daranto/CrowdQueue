@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { api } from "./api";
 import { Artwork, ExplicitBadge } from "./components";
+import { useI18n } from "./i18n";
 import type { PartyState, Track } from "./types";
 import { useTrackTransition } from "./useTrackTransition";
 
@@ -17,7 +18,7 @@ const WALL_PROGRESS_ARC_DEGREES = 360;
 const MIN_WALL_COPY_SCALE = 0.16;
 const MIN_WALL_COPY_HEIGHT = 72;
 
-function buildCues(state: PartyState): WallCue[] {
+function buildCues(state: PartyState, t: (key: string, values?: Record<string, string | number>) => string): WallCue[] {
   const cues: WallCue[] = [];
   const seen = new Set(state.nowPlaying ? [state.nowPlaying.id] : []);
   const append = (track: Track, label: string, detail: string, locked = false) => {
@@ -26,16 +27,17 @@ function buildCues(state: PartyState): WallCue[] {
     cues.push({ key: `${label}-${track.id}`, track, label, detail, locked });
   };
 
-  if (state.lockedNext) append(state.lockedNext, "Als Nächstes", "Fest eingeplant", true);
+  if (state.lockedNext) append(state.lockedNext, t("Als Nächstes"), t("Fest eingeplant"), true);
   state.queue.forEach((track) => append(
     track,
-    "Musikwunsch",
-    `${track.score} ${track.score === 1 ? "Stimme" : "Stimmen"}`,
+    t("Musikwunsch"),
+    `${track.score} ${t(track.score === 1 ? "Stimme" : "Stimmen")}`,
   ));
   return cues;
 }
 
 export function DisplayWallApp({ code }: { code: string }) {
+  const { t } = useI18n();
   const [state, setState] = useState<PartyState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,11 +57,11 @@ export function DisplayWallApp({ code }: { code: string }) {
       setState(await api<PartyState>(`/api/parties/${code}/state`));
       setError(null);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Display Wall konnte nicht geladen werden.");
+      setError(caught instanceof Error ? caught.message : t("Display Wall konnte nicht geladen werden."));
     } finally {
       setLoading(false);
     }
-  }, [code]);
+  }, [code, t]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
@@ -118,7 +120,7 @@ export function DisplayWallApp({ code }: { code: string }) {
     ? progressMs
     : renderedNowPlaying?.durationMs ?? 0;
   const progress = renderedNowPlaying?.durationMs ? Math.min(100, renderedProgressMs / renderedNowPlaying.durationMs * 100) : 0;
-  const cues = useMemo(() => state ? buildCues(state) : [], [state]);
+  const cues = useMemo(() => state ? buildCues(state, t) : [], [state, t]);
   const visibleCues = cues.slice(0, cueCapacity);
   const wallStyle = {
     "--wall-progress-angle": `${progress * WALL_PROGRESS_ARC_DEGREES / 100}deg`,
@@ -245,11 +247,11 @@ export function DisplayWallApp({ code }: { code: string }) {
   }, [renderedNowPlaying]);
 
   if (loading) {
-    return <main id="main" className="display-wall display-wall--message"><span className="display-wall__pulse" /><p>Display Wall wird verbunden …</p></main>;
+    return <main id="main" className="display-wall display-wall--message"><span className="display-wall__pulse" /><p>{t("Display Wall wird verbunden …")}</p></main>;
   }
 
   if (!state) {
-    return <main id="main" className="display-wall display-wall--message"><span className="section-kicker">Display Wall</span><h1>Party nicht gefunden.</h1><p>{error ?? "Prüfe den Display-Link und lade die Seite erneut."}</p></main>;
+    return <main id="main" className="display-wall display-wall--message"><span className="section-kicker">Display Wall</span><h1>{t("Party nicht gefunden.")}</h1><p>{error ?? t("Prüfe den Display-Link und lade die Seite erneut.")}</p></main>;
   }
 
   return (
@@ -262,7 +264,7 @@ export function DisplayWallApp({ code }: { code: string }) {
           </div>
           <div className="display-wall__party">
             <span className={`live-dot ${state.party.active ? "" : "live-dot--off"}`} aria-hidden="true" />
-            <span>{state.party.active ? "Party läuft" : "Party beendet"}</span>
+            <span>{t(state.party.active ? "Party läuft" : "Party beendet")}</span>
             <strong>{state.party.name}</strong>
           </div>
         </header>
@@ -270,7 +272,7 @@ export function DisplayWallApp({ code }: { code: string }) {
         <main id="main" className="display-wall__stage">
           <section className="wall-now" aria-labelledby="wall-current-title">
             <div className="wall-now__status">
-              <span className={state.player.isPlaying ? "wall-now__on-air" : "wall-now__on-air wall-now__on-air--paused"}><i />{state.player.isPlaying ? "On Air" : "Pausiert"}</span>
+              <span className={state.player.isPlaying ? "wall-now__on-air" : "wall-now__on-air wall-now__on-air--paused"}><i />{state.player.isPlaying ? "On Air" : t("Pausiert")}</span>
             </div>
             {renderedNowPlaying ? (
               <div
@@ -279,7 +281,7 @@ export function DisplayWallApp({ code }: { code: string }) {
                 key={renderedNowPlaying.id}
                 onAnimationEnd={currentTrackTransition.onAnimationEnd}
               >
-                <div ref={wallArtRingRef} className="wall-now__art-ring" role="progressbar" aria-label="Fortschritt des laufenden Songs" aria-valuemin={0} aria-valuemax={renderedNowPlaying.durationMs} aria-valuenow={Math.round(renderedProgressMs)}>
+                <div ref={wallArtRingRef} className="wall-now__art-ring" role="progressbar" aria-label={t("Fortschritt des laufenden Songs")} aria-valuemin={0} aria-valuemax={renderedNowPlaying.durationMs} aria-valuenow={Math.round(renderedProgressMs)}>
                   <div className={`wall-now__vinyl ${state.player.isPlaying ? "wall-now__vinyl--spinning" : "wall-now__vinyl--paused"}`}>
                     <Artwork track={renderedNowPlaying} size="hero" />
                   </div>
@@ -292,7 +294,7 @@ export function DisplayWallApp({ code }: { code: string }) {
             ) : (
               <div className="wall-now__empty">
                 <span aria-hidden="true">♫</span>
-                <div><h1 id="wall-current-title">Noch spielt nichts.</h1><p>Sobald die Wiedergabe startet, erscheint der Titel hier.</p></div>
+                <div><h1 id="wall-current-title">{t("Noch spielt nichts")}.</h1><p>{t("Sobald die Wiedergabe startet, erscheint der Titel hier.")}</p></div>
               </div>
             )}
           </section>
@@ -301,7 +303,7 @@ export function DisplayWallApp({ code }: { code: string }) {
             {visibleCues.length ? (
               <>
                 <div className="wall-lineup__heading">
-                  <div><span className="section-kicker">Musikwünsche</span><h2 id="wall-lineup-title">Nächste Tracks</h2></div>
+                  <div><span className="section-kicker">{t("Musikwünsche")}</span><h2 id="wall-lineup-title">{t("Nächste Tracks")}</h2></div>
                   <span>{cues.length}</span>
                 </div>
                 <ol className="wall-lineup__list">
@@ -319,15 +321,15 @@ export function DisplayWallApp({ code }: { code: string }) {
                 </ol>
                 <div className="wall-lineup__footer">
                   <div className="wall-lineup__scan">
-                    {qrDataUrl ? <img src={qrDataUrl} alt={`QR-Code für Musikwünsche bei ${state.party.name}`} /> : <i aria-hidden="true" />}
-                    <span><strong>Song wünschen</strong></span>
+                    {qrDataUrl ? <img src={qrDataUrl} alt={t("QR-Code für Musikwünsche bei {party}", { party: state.party.name })} /> : <i aria-hidden="true" />}
+                    <span><strong>{t("Song wünschen")}</strong></span>
                   </div>
                 </div>
               </>
             ) : (
               <div className="wall-lineup__invite">
-                {qrDataUrl ? <img src={qrDataUrl} alt={`QR-Code für Musikwünsche bei ${state.party.name}`} /> : <span className="wall-lineup__qr-placeholder" aria-hidden="true" />}
-                <div><span className="section-kicker">Jetzt mitbestimmen</span><h2 id="wall-lineup-title">Song wünschen</h2><p>Scanne den Party-Code. Der erste Wunsch erscheint automatisch hier.</p></div>
+                {qrDataUrl ? <img src={qrDataUrl} alt={t("QR-Code für Musikwünsche bei {party}", { party: state.party.name })} /> : <span className="wall-lineup__qr-placeholder" aria-hidden="true" />}
+                <div><span className="section-kicker">{t("Jetzt mitbestimmen")}</span><h2 id="wall-lineup-title">{t("Song wünschen")}</h2><p>{t("Scanne den Party-Code. Der erste Wunsch erscheint automatisch hier.")}</p></div>
               </div>
             )}
           </section>

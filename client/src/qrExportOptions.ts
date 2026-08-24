@@ -10,6 +10,7 @@ export interface QrExportOptions {
   layout: QrPrintLayout;
   tone: QrPrintTone;
   cardCount: QrCardCount;
+  language: Language;
 }
 
 export interface CardGrid {
@@ -33,3 +34,4 @@ export function qrExportFileBase(partyName: string): string {
     .toLowerCase();
   return `crowdqueue-${normalized || "party"}`;
 }
+import type { Language } from "./locales";
