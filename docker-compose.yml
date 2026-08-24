@@ -1,5 +1,6 @@
 services:
   crowdqueue:
+    image: ghcr.io/daranto/crowdqueue:latest
     build: .
     container_name: crowdqueue
     restart: unless-stopped

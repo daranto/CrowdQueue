@@ -2,6 +2,8 @@
 
 Self-hosted, mobile-first party queue for Spotify Connect. Guests join through a QR code without an account, request songs, and vote on the order while playback remains under the host's Spotify account.
 
+[![Docker image](https://github.com/daranto/CrowdQueue/actions/workflows/docker-image.yml/badge.svg)](https://github.com/daranto/CrowdQueue/actions/workflows/docker-image.yml)
+
 [Deutsch](#deutsch) · [English](#english) · [MIT License](./LICENSE)
 
 ## Screenshots
@@ -65,7 +67,7 @@ Die Anwendung verwaltet eine eigene votierbare Party Queue. Etwa 30 Sekunden vor
 2. `.env.example` als `.env` kopieren.
 3. Basis-URLs, Spotify-Zugangsdaten und alle Secrets eintragen.
 4. Im Spotify Developer Dashboard `SPOTIFY_REDIRECT_URI` exakt als Redirect URI hinterlegen.
-5. Container bauen und starten.
+5. Das aktuelle Container-Image laden und starten.
 6. `/admin` öffnen, das einmalige Setup-Token eingeben und Spotify verbinden.
 
 ```sh
@@ -73,7 +75,17 @@ git clone https://github.com/daranto/CrowdQueue.git
 cd CrowdQueue
 cp .env.example .env
 chmod 600 .env
-docker compose up -d --build
+docker compose up -d
+```
+
+Für einen lokalen Build aus dem ausgecheckten Quellcode kann stattdessen `docker compose up -d --build` verwendet werden.
+
+### Automatisches Docker-Image
+
+GitHub Actions baut nach jedem Push auf `main` sowie für Versions-Tags wie `v1.2.3` automatisch ein Multi-Arch-Image für AMD64 und ARM64 und veröffentlicht es in der GitHub Container Registry. `latest` folgt immer dem aktuellen Stand von `main`; zusätzlich werden unveränderliche `sha-…`-Tags und bei Releases semantische Versionstags erzeugt. Die Builds enthalten SBOM- und Provenance-Nachweise.
+
+```sh
+docker pull ghcr.io/daranto/crowdqueue:latest
 ```
 
 Secrets lassen sich beispielsweise so erzeugen:
@@ -239,7 +251,7 @@ The application maintains its own votable party queue. About 30 seconds before t
 2. Copy `.env.example` to `.env`.
 3. Configure the base URLs, Spotify credentials, and all secrets.
 4. Add the exact `SPOTIFY_REDIRECT_URI` value as a redirect URI in the Spotify Developer Dashboard.
-5. Build and start the container.
+5. Pull and start the current container image.
 6. Open `/admin`, enter the one-time setup token, and connect Spotify.
 
 ```sh
@@ -247,7 +259,17 @@ git clone https://github.com/daranto/CrowdQueue.git
 cd CrowdQueue
 cp .env.example .env
 chmod 600 .env
-docker compose up -d --build
+docker compose up -d
+```
+
+To build locally from the checked-out source instead, run `docker compose up -d --build`.
+
+### Automated Docker image
+
+GitHub Actions automatically builds a multi-architecture image for AMD64 and ARM64 after every push to `main` and for version tags such as `v1.2.3`, then publishes it to GitHub Container Registry. `latest` always follows the current `main` revision; immutable `sha-…` tags and semantic version tags for releases are published as well. Builds include SBOM and provenance attestations.
+
+```sh
+docker pull ghcr.io/daranto/crowdqueue:latest
 ```
 
 Secrets can be generated with:
