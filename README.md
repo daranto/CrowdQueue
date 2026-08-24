@@ -4,6 +4,25 @@ Self-hosted, mobile-first party queue for Spotify Connect. Guests join through a
 
 [Deutsch](#deutsch) · [English](#english)
 
+## Screenshots
+
+### Startseite und Gastansicht / Landing page and guest view
+
+<p align="center">
+  <img src="Screenshots/Landing-Page.png" alt="CrowdQueue landing page in English" width="49%">
+  <img src="Screenshots/Guest-View.jpeg" alt="CrowdQueue guest view with the current track, song search, and party queue" width="49%">
+</p>
+
+### Display Wall
+
+![CrowdQueue Display Wall with the current track and guest QR code](Screenshots/Display-Wall.jpeg)
+
+### Adminbereich / Admin console
+
+<p align="center">
+  <img src="Screenshots/Admin-Page.png" alt="CrowdQueue admin console with API statistics, QR code, playback controls, and queue moderation" width="680">
+</p>
+
 ---
 
 ## Deutsch
