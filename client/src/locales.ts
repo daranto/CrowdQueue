@@ -138,6 +138,9 @@ const english: Record<string, string> = {
 
   "Display Wall konnte nicht geladen werden.": "The display wall could not be loaded.",
   "Display Wall wird verbunden …": "Connecting display wall…",
+  "Vollbild öffnen": "Enter fullscreen",
+  "Vollbild verlassen": "Exit fullscreen",
+  "Vollbild wird von diesem Browser nicht unterstützt": "Fullscreen is not supported by this browser",
   "Party nicht gefunden.": "Party not found.",
   "Prüfe den Display-Link und lade die Seite erneut.": "Check the display link and reload the page.",
   "Pausiert": "Paused",

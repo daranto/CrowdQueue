@@ -335,6 +335,25 @@ test("Display Wall zeigt ausschließlich Musikwünsche und passt sich dem Bildsc
   const admin = await response.json();
   const displayUrl = `/p/${admin.party.party.code}/display`;
   let showManyWishes = false;
+  await page.addInitScript(() => {
+    let fullscreenElement: Element | null = null;
+    Object.defineProperty(document, "fullscreenEnabled", { configurable: true, get: () => true });
+    Object.defineProperty(document, "fullscreenElement", { configurable: true, get: () => fullscreenElement });
+    Object.defineProperty(Element.prototype, "requestFullscreen", {
+      configurable: true,
+      value: async () => {
+        fullscreenElement = document.querySelector(".display-wall-page");
+        document.dispatchEvent(new Event("fullscreenchange"));
+      },
+    });
+    Object.defineProperty(document, "exitFullscreen", {
+      configurable: true,
+      value: async () => {
+        fullscreenElement = null;
+        document.dispatchEvent(new Event("fullscreenchange"));
+      },
+    });
+  });
   await page.route(`**/api/parties/${admin.party.party.code}/state`, async (route) => {
     const stateResponse = await route.fetch();
     if (!showManyWishes) {
@@ -398,7 +417,15 @@ test("Display Wall zeigt ausschließlich Musikwünsche und passt sich dem Bildsc
   const largeQrWidth = await largeQr.evaluate((element) => element.getBoundingClientRect().width);
   await expect(page.getByText("Dance The Night", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Blinding Lights", { exact: true })).toHaveCount(0);
-  await expect(page.locator("button, input, select, form")).toHaveCount(0);
+  await expect(page.locator("input, select, form")).toHaveCount(0);
+  const fullscreenButton = page.getByRole("button", { name: "Vollbild öffnen" });
+  await expect(fullscreenButton).toBeVisible();
+  await expect(fullscreenButton).toHaveAttribute("aria-pressed", "false");
+  await fullscreenButton.click();
+  const exitFullscreenButton = page.getByRole("button", { name: "Vollbild verlassen" });
+  await expect(exitFullscreenButton).toHaveAttribute("aria-pressed", "true");
+  await exitFullscreenButton.click();
+  await expect(page.getByRole("button", { name: "Vollbild öffnen" })).toHaveAttribute("aria-pressed", "false");
   await expect(page.locator(".display-wall__footer")).toHaveCount(0);
   await expect(page.locator(".wall-now__layout")).toHaveClass(/now-track-transition--visible/);
 

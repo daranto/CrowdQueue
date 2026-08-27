@@ -41,9 +41,12 @@ export function DisplayWallApp({ code }: { code: string }) {
   const [state, setState] = useState<PartyState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fullscreenSupported] = useState(() => document.fullscreenEnabled && typeof document.documentElement.requestFullscreen === "function");
   const [clock, setClock] = useState(() => Date.now());
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [cueCapacity, setCueCapacity] = useState(3);
+  const wallPageRef = useRef<HTMLDivElement>(null);
   const lineupRef = useRef<HTMLElement>(null);
   const wallLayoutRef = useRef<HTMLDivElement>(null);
   const wallArtRingRef = useRef<HTMLDivElement>(null);
@@ -125,6 +128,25 @@ export function DisplayWallApp({ code }: { code: string }) {
   const wallStyle = {
     "--wall-progress-angle": `${progress * WALL_PROGRESS_ARC_DEGREES / 100}deg`,
   } as CSSProperties;
+
+  useEffect(() => {
+    const syncFullscreenState = () => setIsFullscreen(Boolean(
+      wallPageRef.current && document.fullscreenElement === wallPageRef.current,
+    ));
+    document.addEventListener("fullscreenchange", syncFullscreenState);
+    syncFullscreenState();
+    return () => document.removeEventListener("fullscreenchange", syncFullscreenState);
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    if (!fullscreenSupported) return;
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await wallPageRef.current?.requestFullscreen();
+    } catch {
+      setIsFullscreen(false);
+    }
+  }, [fullscreenSupported]);
 
   useEffect(() => {
     const panel = lineupRef.current;
@@ -255,7 +277,7 @@ export function DisplayWallApp({ code }: { code: string }) {
   }
 
   return (
-    <div className="display-wall-page" style={wallStyle}>
+    <div ref={wallPageRef} className="display-wall-page" style={wallStyle}>
       <div className="display-wall">
         <header className="display-wall__header">
           <div className="wall-brand" aria-label="CrowdQueue">
@@ -267,6 +289,24 @@ export function DisplayWallApp({ code }: { code: string }) {
             <span>{t(state.party.active ? "Party läuft" : "Party beendet")}</span>
             <strong>{state.party.name}</strong>
           </div>
+          <button
+            className="display-wall__fullscreen"
+            type="button"
+            aria-label={t(fullscreenSupported
+              ? isFullscreen ? "Vollbild verlassen" : "Vollbild öffnen"
+              : "Vollbild wird von diesem Browser nicht unterstützt")}
+            aria-pressed={isFullscreen}
+            disabled={!fullscreenSupported}
+            onClick={() => void toggleFullscreen()}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              {isFullscreen ? (
+                <path d="M9 3v6H3m12-6v6h6m0 6h-6v6M3 15h6v6" />
+              ) : (
+                <path d="M8 3H3v5m13-5h5v5m0 8v5h-5M3 16v5h5" />
+              )}
+            </svg>
+          </button>
         </header>
 
         <main id="main" className="display-wall__stage">
